@@ -25,6 +25,9 @@ import {
   Activity,
   Pause,
   Play,
+  Bot,
+  PlusCircle,
+  Share2,
 } from 'lucide-react';
 
 const POPULAR_WEB_DISCOVERIES = [
@@ -529,7 +532,7 @@ export function App() {
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full space-y-6">
+      <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 w-full space-y-4 sm:space-y-6 pb-28 md:pb-8">
         {/* Full-Web Realtime Progress Bar */}
         {isSearchingWeb && (
           <div className="p-4 bg-gradient-to-r from-sky-950 via-indigo-950 to-slate-950 border border-sky-500/50 rounded-2xl shadow-xl animate-pulse flex items-center justify-between gap-4">
@@ -867,7 +870,7 @@ export function App() {
       />
 
       {/* Footer */}
-      <footer className="mt-16 border-t border-slate-800/80 bg-slate-950/80 py-10 text-xs text-slate-500">
+      <footer className="mt-12 sm:mt-16 border-t border-slate-800/80 bg-slate-950/80 py-8 sm:py-10 text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="space-y-1 text-center md:text-left">
             <div className="text-slate-300 font-bold flex items-center gap-2 justify-center md:justify-start">
@@ -903,6 +906,69 @@ export function App() {
           </div>
         </div>
       </footer>
+
+      {/* Mobile Floating Bottom Navigation Bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800 px-2 py-1.5 flex items-center justify-around shadow-2xl safe-area-pb">
+        <button
+          onClick={() => {
+            setFilters({
+              searchQuery: '',
+              genre: '全部',
+              network: '全部',
+              verdictTier: 'all',
+              sortBy: 'composite',
+              specialTag: 'all',
+            });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className="flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl text-slate-400 hover:text-white active:scale-95 transition-all cursor-pointer"
+        >
+          <Film className="w-4 h-4 text-sky-400" />
+          <span className="text-[10px] font-bold">精选榜单</span>
+        </button>
+
+        <button
+          onClick={() => setIsAdvisorOpen(true)}
+          className="flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl text-slate-400 hover:text-white active:scale-95 transition-all cursor-pointer relative"
+        >
+          <div className="relative">
+            <Bot className="w-4 h-4 text-sky-400" />
+            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          </div>
+          <span className="text-[10px] font-bold text-sky-300">AI 避雷</span>
+        </button>
+
+        <button
+          onClick={() => setIsCompareModalOpen(true)}
+          className="flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl text-slate-400 hover:text-white active:scale-95 transition-all cursor-pointer relative"
+        >
+          <div className="relative">
+            <Scale className="w-4 h-4 text-amber-400" />
+            {comparedShows.length > 0 && (
+              <span className="absolute -top-1.5 -right-2 w-4 h-4 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black flex items-center justify-center">
+                {comparedShows.length}
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] font-bold text-amber-300">横向对比</span>
+        </button>
+
+        <button
+          onClick={() => setIsAddShowOpen(true)}
+          className="flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl text-slate-400 hover:text-white active:scale-95 transition-all cursor-pointer"
+        >
+          <PlusCircle className="w-4 h-4 text-emerald-400" />
+          <span className="text-[10px] font-bold text-emerald-300">收录新剧</span>
+        </button>
+
+        <button
+          onClick={() => setIsShareModalOpen(true)}
+          className="flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl text-slate-400 hover:text-white active:scale-95 transition-all cursor-pointer"
+        >
+          <Share2 className="w-4 h-4 text-teal-300" />
+          <span className="text-[10px] font-bold text-teal-300">分享链接</span>
+        </button>
+      </nav>
     </div>
   );
 }
