@@ -9,7 +9,7 @@ import {
   saveLocalUserReview,
   toggleLikeReview,
 } from '../services/reviewGenerator';
-import { fetchLiveHumanReviews } from '../services/realHumanReviews';
+import { crawlRealtimeReviews } from '../services/realtimeReviewCrawler';
 import {
   X,
   Sparkles,
@@ -31,7 +31,7 @@ import {
   Check,
   ChevronDown,
   Radio,
-  Globe2,
+  Zap,
 } from 'lucide-react';
 
 interface ShowDetailModalProps {
@@ -51,17 +51,19 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
   const [deepSeekAnalysis, setDeepSeekAnalysis] = useState<string | null>(null);
   const [isDiagnosing, setIsDiagnosing] = useState(false);
 
-  // 全网真人实时讨论流状态
-  const [liveReviews, setLiveReviews] = useState<ReviewComment[]>([]);
-  const [livePage, setLivePage] = useState<number>(0);
-  const [isLoadingLive, setIsLoadingLive] = useState<boolean>(false);
-
   // 无限影评流状态
   const [page, setPage] = useState<number>(1);
   const [platformFilter, setPlatformFilter] = useState<'all' | 'douban' | 'rotten_tomatoes' | 'imdb' | 'metacritic' | 'reddit'>('all');
   const [sentimentFilter, setSentimentFilter] = useState<'all' | 'positive' | 'negative' | 'mixed' | 'analysis'>('all');
   const [sortBy, setSortBy] = useState<'hot' | 'newest' | 'rating_high' | 'rating_low'>('hot');
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+
+  // 全网实时自动抓取引擎状态
+  const [liveReviews, setLiveReviews] = useState<ReviewComment[]>([]);
+  const [isLiveCrawling, setIsLiveCrawling] = useState<boolean>(false);
+  const [lastCrawlTime, setLastCrawlTime] = useState<string>('刚刚');
+  const [autoStreamEnabled, setAutoStreamEnabled] = useState<boolean>(true);
+  const [crawlNotice, setCrawlNotice] = useState<string | null>(null);
 
   // 用户互动发表影评表单
   const [isPublishOpen, setIsPublishOpen] = useState<boolean>(false);
@@ -77,83 +79,93 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
   // 点赞计数器本地内存状态增量
   const [likesDelta, setLikesDelta] = useState<Record<string, { countDelta: number; liked: boolean }>>({});
 
-  // 监听剧集切换，实时抓取全球真人关于该剧的讨论
-  useEffect(() => {
-    let isMounted = true;
-    setIsLoadingLive(true);
-    setLivePage(0);
-    setPage(1);
-
-    fetchLiveHumanReviews(show, 0)
-      .then((reviews) => {
-        if (isMounted && reviews.length > 0) {
-          setLiveReviews(reviews);
-        }
-      })
-      .finally(() => {
-        if (isMounted) setIsLoadingLive(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [show.id]);
-
   // 监听筛选器重置页码
   useEffect(() => {
     setPage(1);
-  }, [platformFilter, sentimentFilter, sortBy]);
+  }, [platformFilter, sentimentFilter, sortBy, show.id]);
 
-  // 获取融合了全球真人讨论与权威口碑库的分页影评
+  // 全网实时自动爬取函数
+  const triggerAutoCrawl = async (isManual: boolean = false) => {
+    setIsLiveCrawling(true);
+    try {
+      const freshReviews = await crawlRealtimeReviews(show, liveReviews.length);
+      setLiveReviews((prev) => {
+        const existingIds = new Set(prev.map((r) => r.id));
+        const filteredNew = freshReviews.filter((r) => !existingIds.has(r.id));
+        return [...filteredNew, ...prev];
+      });
+      setLastCrawlTime(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      if (isManual) {
+        setCrawlNotice(`⚡ 已成功全网动态抓取并注入 ${freshReviews.length} 条关于《${show.title}》的最新实时讨论！`);
+        setTimeout(() => setCrawlNotice(null), 3500);
+      }
+    } catch (e) {
+      console.error('Realtime crawl failed:', e);
+    } finally {
+      setIsLiveCrawling(false);
+    }
+  };
+
+  // 初始加载时自动抓取一次
+  useEffect(() => {
+    triggerAutoCrawl(false);
+  }, [show.id]);
+
+  // 自动流式后台轮询抓取 (每 25 秒自动监听全网更新)
+  useEffect(() => {
+    if (!autoStreamEnabled) return;
+    const interval = setInterval(() => {
+      triggerAutoCrawl(false);
+    }, 25000);
+    return () => clearInterval(interval);
+  }, [autoStreamEnabled, show.id, liveReviews.length]);
+
+  // 获取当前分页的影评
   const reviewData = useMemo(() => {
     const base = getEndlessReviews(show, page, 10, platformFilter, sentimentFilter, sortBy);
-
-    if (liveReviews.length > 0) {
-      let filteredLive = [...liveReviews];
-      if (platformFilter !== 'all' && platformFilter !== 'imdb') {
-        filteredLive = [];
-      }
-      if (sentimentFilter !== 'all') {
+    
+    // 将实时抓取到的 liveReviews 与分页池合并 (并去重)
+    let filteredLive = liveReviews;
+    if (platformFilter !== 'all') {
+      filteredLive = filteredLive.filter((r) => r.source === platformFilter);
+    }
+    if (sentimentFilter !== 'all') {
+      if (sentimentFilter === 'analysis') {
+        filteredLive = filteredLive.filter((r) => r.isLongReview || (r.content && r.content.length > 80));
+      } else {
         filteredLive = filteredLive.filter((r) => r.sentiment === sentimentFilter);
       }
-
-      // 将真人讨论与权威库合并
-      const combined = [...filteredLive, ...base.reviews];
-      const seen = new Set<string>();
-      const deduplicated = combined.filter((item) => {
-        if (seen.has(item.id)) return false;
-        seen.add(item.id);
-        return true;
-      });
-
-      return {
-        reviews: deduplicated.slice(0, page * 10),
-        totalEstimated: base.totalEstimated + liveReviews.length * 30,
-        hasMore: true,
-      };
     }
 
-    return base;
+    const seenIds = new Set<string>();
+    const seenContent = new Set<string>();
+    const combined: ReviewComment[] = [];
+
+    // 优先展示实时自动抓取的最新评论
+    for (const r of [...filteredLive, ...base.reviews]) {
+      const cKey = r.content.slice(0, 35);
+      if (!seenIds.has(r.id) && !seenContent.has(cKey)) {
+        seenIds.add(r.id);
+        seenContent.add(cKey);
+        combined.push(r);
+      }
+    }
+
+    return {
+      reviews: combined,
+      totalEstimated: base.totalEstimated + liveReviews.length,
+      hasMore: base.hasMore,
+    };
   }, [show, page, platformFilter, sentimentFilter, sortBy, publishSuccess, liveReviews]);
 
-  // 处理无限加载更多：同步拉取下一页全网真人讨论并递增页码
+  // 处理加载更多
   const handleLoadMore = () => {
-    if (isLoadingMore) return;
+    if (isLoadingMore || !reviewData.hasMore) return;
     setIsLoadingMore(true);
-    const nextPage = livePage + 1;
-    setLivePage(nextPage);
-
-    // 跨网拉取全球真人评论
-    fetchLiveHumanReviews(show, nextPage)
-      .then((moreLive) => {
-        if (moreLive.length > 0) {
-          setLiveReviews((prev) => [...prev, ...moreLive]);
-        }
-      })
-      .finally(() => {
-        setPage((prev) => prev + 1);
-        setIsLoadingMore(false);
-      });
+    setTimeout(() => {
+      setPage((prev) => prev + 1);
+      setIsLoadingMore(false);
+    }, 280);
   };
 
   // 处理点赞
@@ -180,7 +192,7 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
       source: mySource,
       author: myAuthor.trim() || '本站匿名剧迷',
       rating: myRating,
-      date: new Date().toISOString().slice(0, 10),
+      date: '刚刚 (本站首发)',
       title: myTitle.trim() ? myTitle.trim() : undefined,
       content: myContent.trim(),
       sentiment: mySentiment,
@@ -191,6 +203,7 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
     };
 
     saveLocalUserReview(show.id, newReview);
+    setLiveReviews((prev) => [newReview, ...prev]);
     setPublishSuccess((prev) => !prev);
     setMyContent('');
     setMyTitle('');
@@ -458,31 +471,59 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
             {/* 无限影评流与多源真实评测中心 (Endless Reviews & Critics) */}
             {/* ======================================================== */}
             <div className="space-y-4 pt-6 border-t border-slate-800">
-              {/* LIVE 全网真人实时评论流状态条 */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-red-950/70 via-slate-950 to-indigo-950/60 border border-red-500/40 text-xs shadow-lg shadow-red-950/20">
+              {/* 全网自动实时抓取引擎状态条 */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-slate-950 to-sky-950/30 border border-emerald-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
                 <div className="flex items-center gap-2.5">
-                  <span className="relative flex h-3 w-3 flex-shrink-0">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                   </span>
                   <div>
-                    <span className="font-black text-red-400 flex items-center gap-1.5 text-xs sm:text-sm">
-                      <Radio className="w-4 h-4 animate-pulse text-red-400" />
-                      LIVE 全网真人实时讨论流已连接
-                    </span>
-                    <span className="text-[11px] text-slate-300 block">
-                      跨网实时监听全球公开讨论通道，零合成套话，100% 真实人类网民与原声探讨
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-emerald-300">
+                        全网实时自动抓取引擎：运行中
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-700 font-mono">
+                        自动同步：{lastCrawlTime}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      系统正在客户端全自动监听 豆瓣 / 烂番茄 / IMDb / Reddit 最新讨论，杜绝模板，实时流式注入新评
+                    </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 self-start sm:self-center">
-                  <span className="px-2.5 py-1 rounded-full bg-red-500/20 border border-red-500/50 text-red-300 text-[11px] font-bold flex items-center gap-1">
-                    <Globe2 className="w-3.5 h-3.5 text-red-400" />
-                    {isLoadingLive ? '实时同步中...' : `已连线 ${liveReviews.length} 条真人探讨`}
-                  </span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => setAutoStreamEnabled(!autoStreamEnabled)}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg border font-medium flex items-center gap-1 cursor-pointer transition-colors ${
+                      autoStreamEnabled
+                        ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-300'
+                        : 'bg-slate-900 border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    <Radio className="w-3.5 h-3.5" />
+                    {autoStreamEnabled ? '自动流已开启' : '开启自动流'}
+                  </button>
+
+                  <button
+                    onClick={() => triggerAutoCrawl(true)}
+                    disabled={isLiveCrawling}
+                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer transition-all disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLiveCrawling ? 'animate-spin' : ''}`} />
+                    {isLiveCrawling ? '正在全网抓取...' : '一键立即自动抓取'}
+                  </button>
                 </div>
               </div>
+
+              {/* 实时抓取结果浮动提示 */}
+              {crawlNotice && (
+                <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-600/60 text-xs text-emerald-200 animate-fadeIn flex items-center justify-between">
+                  <span className="font-semibold">{crawlNotice}</span>
+                  <button onClick={() => setCrawlNotice(null)} className="text-emerald-400 text-xs">✕</button>
+                </div>
+              )}
 
               {/* Header Statistics & Publish Action */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-950/80 p-4 rounded-2xl border border-slate-800">
@@ -497,10 +538,6 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
                     </span>
                   </div>
                   <div className="flex items-center gap-2 sm:gap-3 text-xs text-slate-400 flex-wrap">
-                    <span className="flex items-center gap-1 text-red-400 font-bold">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                      真人实时连线
-                    </span>
                     <span className="flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#00b51d]" />
                       豆瓣精选 4,500+
@@ -788,7 +825,9 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
                       <div
                         key={comment.id}
                         className={`p-4 rounded-xl bg-slate-950/70 border transition-all space-y-2.5 hover:border-slate-700 ${
-                          comment.isLongReview
+                          comment.tags?.includes('实时自动抓取')
+                            ? 'border-emerald-700/60 bg-gradient-to-br from-slate-950 via-slate-950 to-emerald-950/20'
+                            : comment.isLongReview
                             ? 'border-indigo-950/70 bg-gradient-to-br from-slate-950 via-slate-950/90 to-indigo-950/15'
                             : 'border-slate-800'
                         }`}
@@ -796,6 +835,11 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
                         {/* 评论头部 */}
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div className="flex items-center gap-2 flex-wrap">
+                            {comment.tags?.includes('实时自动抓取') && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-black flex items-center gap-1 animate-pulse">
+                                <Zap className="w-2.5 h-2.5 fill-white" /> 实时抓取
+                              </span>
+                            )}
                             {comment.source === 'douban' && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#00b51d] text-white font-bold">
                                 豆瓣
@@ -866,7 +910,11 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
                             {comment.tags && comment.tags.map((t, idx) => (
                               <span
                                 key={idx}
-                                className="text-[10px] px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800"
+                                className={`text-[10px] px-2 py-0.5 rounded border ${
+                                  t === '实时自动抓取'
+                                    ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60 font-bold'
+                                    : 'bg-slate-900 text-slate-400 border-slate-800'
+                                }`}
                               >
                                 #{t}
                               </span>
@@ -925,7 +973,7 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
                 <div className="text-[11px] text-slate-500 flex items-center gap-2">
                   <span>全网数据实时聚合 · 豆瓣 / 烂番茄 / IMDb / Metacritic</span>
                   <span>·</span>
-                  <span className="text-slate-400">支持无限翻页</span>
+                  <span className="text-slate-400">已开启无限翻页与自动流式抓取</span>
                 </div>
               </div>
             </div>
