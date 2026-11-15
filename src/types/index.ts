@@ -52,7 +52,7 @@ export interface TVShow {
   totalEpisodes: number;
   status: 'Ended' | 'Returning Series' | 'Canceled';
   genres: string[];
-  network: 'HBO / Max' | 'Netflix' | 'Apple TV+' | 'Amazon Prime' | 'Disney+' | 'AMC' | 'Hulu' | 'FX';
+  network: 'HBO / Max' | 'Netflix' | 'Apple TV+' | 'Amazon Prime' | 'Disney+' | 'AMC' | 'Hulu' | 'FX' | 'Paramount+' | 'Showtime' | 'Peacock' | string;
   poster: string;
   backdrop: string;
   summary: string;
