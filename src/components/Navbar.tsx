@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Film,
   Search,
@@ -8,10 +8,14 @@ import {
   PlusCircle,
   Share2,
 } from 'lucide-react';
+import { MediaAutocompleteDropdown } from './MediaAutocompleteDropdown';
+import { TMDBMediaSearchResult } from '../services/tmdbOmdbService';
 
 interface NavbarProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  onSelectMediaItem?: (item: TMDBMediaSearchResult) => void;
+  onTriggerSearch?: (q: string) => void;
   compareCount: number;
   onOpenCompare: () => void;
   onOpenSchedule: () => void;
@@ -25,6 +29,8 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({
   searchQuery,
   onSearchChange,
+  onSelectMediaItem,
+  onTriggerSearch,
   compareCount,
   onOpenCompare,
   onOpenSchedule,
@@ -32,6 +38,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAddShow,
   onOpenShare,
 }) => {
+  const [isDesktopDropdownOpen, setIsDesktopDropdownOpen] = useState(false);
+  const [isMobileDropdownOpen, setIsMobileDropdownOpen] = useState(false);
+
   return (
     <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-lg border-b border-slate-800">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-3">
@@ -60,22 +69,50 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Desktop Search Bar */}
         <div className="flex-1 max-w-md hidden md:block">
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="搜索美剧中文名、英文名、导演、演员、类型..."
-              className="w-full bg-slate-900/90 border border-slate-700/80 hover:border-slate-600 focus:border-sky-500 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none transition-colors"
+              onFocus={() => setIsDesktopDropdownOpen(true)}
+              onChange={(e) => {
+                onSearchChange(e.target.value);
+                setIsDesktopDropdownOpen(true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && searchQuery.trim()) {
+                  setIsDesktopDropdownOpen(false);
+                  onTriggerSearch?.(searchQuery.trim());
+                }
+              }}
+              placeholder="搜索全球美剧/电影（中英文、演员、IMDb ID）..."
+              className="w-full bg-slate-900/90 border border-slate-700/80 hover:border-slate-600 focus:border-sky-500 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none transition-colors shadow-inner"
             />
             {searchQuery && (
               <button
-                onClick={() => onSearchChange('')}
+                onClick={() => {
+                  onSearchChange('');
+                  setIsDesktopDropdownOpen(false);
+                }}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs cursor-pointer"
               >
                 ✕
               </button>
             )}
+
+            {/* Live Autocomplete Suggestion Dropdown */}
+            <MediaAutocompleteDropdown
+              query={searchQuery}
+              isOpen={isDesktopDropdownOpen && searchQuery.trim().length > 0}
+              onClose={() => setIsDesktopDropdownOpen(false)}
+              onSelect={(item) => {
+                setIsDesktopDropdownOpen(false);
+                onSelectMediaItem?.(item);
+              }}
+              onSearchAll={(q) => {
+                setIsDesktopDropdownOpen(false);
+                onTriggerSearch?.(q);
+              }}
+            />
           </div>
         </div>
 
@@ -152,18 +189,46 @@ export const Navbar: React.FC<NavbarProps> = ({
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="搜索美剧名、演员、类型或标签..."
-            className="w-full bg-slate-900 border border-slate-800 focus:border-sky-500 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none transition-colors"
+            onFocus={() => setIsMobileDropdownOpen(true)}
+            onChange={(e) => {
+              onSearchChange(e.target.value);
+              setIsMobileDropdownOpen(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && searchQuery.trim()) {
+                setIsMobileDropdownOpen(false);
+                onTriggerSearch?.(searchQuery.trim());
+              }
+            }}
+            placeholder="搜索全球美剧/电影（中英文、演员、IMDb ID）..."
+            className="w-full bg-slate-900 border border-slate-800 focus:border-sky-500 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none transition-colors shadow-inner"
           />
           {searchQuery && (
             <button
-              onClick={() => onSearchChange('')}
+              onClick={() => {
+                onSearchChange('');
+                setIsMobileDropdownOpen(false);
+              }}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-xs"
             >
               ✕
             </button>
           )}
+
+          {/* Mobile Live Autocomplete Dropdown */}
+          <MediaAutocompleteDropdown
+            query={searchQuery}
+            isOpen={isMobileDropdownOpen && searchQuery.trim().length > 0}
+            onClose={() => setIsMobileDropdownOpen(false)}
+            onSelect={(item) => {
+              setIsMobileDropdownOpen(false);
+              onSelectMediaItem?.(item);
+            }}
+            onSearchAll={(q) => {
+              setIsMobileDropdownOpen(false);
+              onTriggerSearch?.(q);
+            }}
+          />
         </div>
       </div>
     </header>

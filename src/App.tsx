@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { TVShow, FilterOptions } from './types';
 import { SHOWS_DATA } from './data/showsData';
 import { Navbar } from './components/Navbar';
@@ -13,7 +13,12 @@ import { AddShowWithAIModal } from './components/AddShowWithAIModal';
 import { ShareModal } from './components/ShareModal';
 import { analyzeShowWithDeepSeek } from './services/deepseek';
 import { searchTVMazeShow, generateOfflineFallbackShow } from './services/tvmaze';
-import { searchAndBuildShowWithTMDB } from './services/tmdbOmdbService';
+import {
+  searchAndBuildShowWithTMDB,
+  discoverInfiniteShows,
+  fetchFullShowDetailsFromTMDBAndOMDB,
+  TMDBMediaSearchResult,
+} from './services/tmdbOmdbService';
 import {
   Scale,
   Sparkles,
@@ -329,21 +334,122 @@ export function App() {
     return () => clearInterval(timer);
   }, [isLiveAutoUpdating, liveIntervalSeconds, shows, isSearchingWeb]);
 
-  // Infinite Scroll Listener
-  useEffect(() => {
-    if (!isAutoStreaming) return;
+  // TMDb Discover 全网无限流引擎状态
+  const [discoverPage, setDiscoverPage] = useState(1);
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [hasMoreDiscover, setHasMoreDiscover] = useState(true);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
-    const handleScroll = () => {
-      if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 700) {
-        if (!isSearchingWeb) {
-          fetchNextShowFromQueue();
+  // 核心无限流加载函数：从 TMDb 500 页上万部全球影视片库中无缝流式获取
+  const loadMoreInfiniteShows = async () => {
+    if (isDiscovering || !hasMoreDiscover || !isAutoStreaming) return;
+
+    setIsDiscovering(true);
+    try {
+      const result = await discoverInfiniteShows({
+        page: discoverPage,
+        genre: filters.genre,
+        network: filters.network,
+        sortBy: filters.sortBy,
+      });
+
+      if (result.items.length > 0) {
+        setShows((prev) => {
+          const existingIds = new Set(prev.map((s) => s.id));
+          const existingTitles = new Set(prev.map((s) => s.title.toLowerCase()));
+          const newItems = result.items.filter(
+            (item) => !existingIds.has(item.id) && !existingTitles.has(item.title.toLowerCase())
+          );
+          return [...prev, ...newItems];
+        });
+        setDiscoverPage((p) => p + 1);
+        setHasMoreDiscover(result.hasMore);
+      } else {
+        setHasMoreDiscover(false);
+      }
+    } catch (e) {
+      console.error('Discover stream error:', e);
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
+
+  // 监听分类与排序变动，重置发现流并开启对应类目的流式加载
+  useEffect(() => {
+    setDiscoverPage(1);
+    setHasMoreDiscover(true);
+  }, [filters.genre, filters.network, filters.sortBy]);
+
+  // 初次加载时如果本地片单较少，自动调取第一页 TMDb Discover 影视
+  useEffect(() => {
+    if (shows.length < 30) {
+      loadMoreInfiniteShows();
+    }
+  }, []);
+
+  // 使用 IntersectionObserver 监听底部哨兵元素，实现无缝平滑无限滚动 (滚不完的影视流)
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !isAutoStreaming) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isDiscovering && hasMoreDiscover) {
+          loadMoreInfiniteShows();
+        }
+      },
+      { rootMargin: '500px' }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [sentinelRef.current, isDiscovering, hasMoreDiscover, isAutoStreaming, discoverPage, filters.genre, filters.network, filters.sortBy]);
+
+  // 处理搜索框自动联想项点击直达 (TMDb + OMDb 双通道权威直连)
+  const handleSelectAutocompleteItem = async (item: TMDBMediaSearchResult) => {
+    setIsSearchingWeb(true);
+    setSearchProgress(`正在通过 TMDb + OMDb 双通道权威直连拉取《${item.title}》全量真实评分与剧集资料...`);
+    try {
+      const fullShow = await fetchFullShowDetailsFromTMDBAndOMDB(item.mediaType, item.id);
+      if (fullShow) {
+        handleAddShow(fullShow);
+        setSelectedShow(fullShow);
+        setFilters((f) => ({ ...f, searchQuery: '' }));
+        setStreamToast(`✨ 已成功收录并展示：《${fullShow.title}》！`);
+        setTimeout(() => setStreamToast(null), 3500);
+      } else {
+        const fallback = await searchAndBuildShowWithTMDB(item.title);
+        if (fallback) {
+          handleAddShow(fallback);
+          setSelectedShow(fallback);
+          setFilters((f) => ({ ...f, searchQuery: '' }));
         }
       }
-    };
+    } catch (e) {
+      console.error('Error loading autocomplete show:', e);
+    } finally {
+      setIsSearchingWeb(false);
+    }
+  };
 
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [shows, isSearchingWeb, isAutoStreaming]);
+  // 点击卡片时的无缝数据增强
+  const handleSelectShow = (show: TVShow) => {
+    setSelectedShow(show);
+    // 如果是轻量 discover 卡片（尚未包含完整分季与 OMDb 详细奖项/评论），后台静默升级为完整资料
+    if (show.id.startsWith('tmdb-') && (!show.seasons || show.seasons.length === 0)) {
+      const match = show.id.match(/^tmdb-(\d+)/);
+      if (match) {
+        const tmdbId = Number(match[1]);
+        const isMovie = show.genres.includes('电影') || show.totalEpisodes === 1;
+        fetchFullShowDetailsFromTMDBAndOMDB(isMovie ? 'movie' : 'tv', tmdbId).then((full) => {
+          if (full) {
+            setSelectedShow(full);
+            setShows((prev) => prev.map((s) => (s.id === show.id ? full : s)));
+          }
+        });
+      }
+    }
+  };
 
   // Real-time web fetch using DeepSeek & Web Data
   const handleSearchWebRealtime = async (targetName: string) => {
@@ -544,6 +650,8 @@ export function App() {
       <Navbar
         searchQuery={filters.searchQuery}
         onSearchChange={(q) => setFilters({ ...filters, searchQuery: q })}
+        onSelectMediaItem={handleSelectAutocompleteItem}
+        onTriggerSearch={handleSearchWebRealtime}
         compareCount={comparedShows.length}
         onOpenCompare={() => setIsCompareModalOpen(true)}
         onOpenSchedule={() => setIsScheduleModalOpen(true)}
@@ -719,15 +827,28 @@ export function App() {
                 <ShowCard
                   key={show.id}
                   show={show}
-                  onSelect={(s) => setSelectedShow(s)}
+                  onSelect={handleSelectShow}
                   isCompared={comparedShows.some((c) => c.id === show.id)}
                   onToggleCompare={handleToggleCompare}
                 />
               ))}
             </div>
 
+            {/* Infinite Scroll Sentinel & Realtime Loader */}
+            <div ref={sentinelRef} className="py-6 flex flex-col items-center justify-center text-center">
+              {isDiscovering && (
+                <div className="flex items-center gap-2.5 text-sky-400 font-bold text-xs sm:text-sm bg-slate-900/90 px-5 py-2.5 rounded-2xl border border-sky-500/30 shadow-lg animate-pulse">
+                  <RefreshCw className="w-4 h-4 animate-spin text-sky-400" />
+                  <span>TMDb 全球片库无限流正在调取下一批好剧（第 {discoverPage} 页 · 下滑自动无限加载）...</span>
+                </div>
+              )}
+              {!hasMoreDiscover && (
+                <p className="text-xs text-slate-500">🎉 已为您加载全部该分类下的全球影视作品</p>
+              )}
+            </div>
+
             {/* Infinite Stream Endless Controller */}
-            <div className="mt-8 p-5 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-slate-800 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+            <div className="mt-4 p-5 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-slate-800 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
               <div>
                 <div className="flex items-center gap-2">
                   <span className="relative flex h-2.5 w-2.5">
@@ -735,14 +856,14 @@ export function App() {
                     <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                   </span>
                   <h4 className="text-sm font-black text-white">
-                    全网流式无限画卷 · 滑不完的权威美剧库
+                    全网流式无限画卷 · 滑不完的权威影视库
                   </h4>
                   <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 font-mono border border-sky-800 font-bold">
-                    当前已收录 {shows.length} 部权威美剧
+                    当前已呈现 {shows.length} 部真实影视 · 第 {discoverPage} 页无限发现流
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  向下滚动即可自动从全网实时并发抓取并注入新剧，各大平台评分与雷达图自动对齐
+                  直连全球影视资料库，向下滚动即可自动加载上万部好剧好片，IMDb 与各大平台真实评分自动对齐
                 </p>
               </div>
 
@@ -757,16 +878,16 @@ export function App() {
                   title="开启/关闭滚动到底部自动抓取新剧"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isAutoStreaming ? 'animate-spin' : ''}`} />
-                  <span>自动滚动抓取: {isAutoStreaming ? '已开启' : '已暂停'}</span>
+                  <span>自动滚动加载: {isAutoStreaming ? '已开启' : '已暂停'}</span>
                 </button>
 
                 <button
-                  onClick={fetchNextShowFromQueue}
-                  disabled={isSearchingWeb}
+                  onClick={loadMoreInfiniteShows}
+                  disabled={isDiscovering}
                   className="px-4 py-2 bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-400 hover:to-indigo-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-sky-500/25 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   <Zap className="w-3.5 h-3.5" />
-                  <span>{isSearchingWeb ? '正在从全网抓取...' : '🚀 立即从全网再抓取新剧'}</span>
+                  <span>{isDiscovering ? '正在调取片库...' : '🚀 立即加载下一批好剧'}</span>
                 </button>
               </div>
             </div>

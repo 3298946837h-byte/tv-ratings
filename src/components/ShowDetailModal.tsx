@@ -10,6 +10,7 @@ import {
   toggleLikeReview,
 } from '../services/reviewGenerator';
 import { crawlRealtimeReviews, generateLiveAIReviewWithGitHubModels } from '../services/realtimeReviewCrawler';
+import { fetchTMDbReviews, universalSearchMedia } from '../services/tmdbOmdbService';
 import {
   X,
   Sparkles,
@@ -84,19 +85,46 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
     setPage(1);
   }, [platformFilter, sentimentFilter, sortBy, show.id]);
 
-  // 全网实时自动爬取函数
+  // 全网实时自动爬取函数（集成真实 TMDb 全球影评与全网多源讨论）
   const triggerAutoCrawl = async (isManual: boolean = false) => {
     setIsLiveCrawling(true);
     try {
+      // 1. 抓取真实 TMDb 全球实名/认证影评
+      let tmdbReviews: ReviewComment[] = [];
+      try {
+        let tmdbId: number | null = null;
+        let mediaType: 'movie' | 'tv' = (show.genres.includes('电影') || show.totalEpisodes === 1) ? 'movie' : 'tv';
+        if (show.id.startsWith('tmdb-')) {
+          const m = show.id.match(/^tmdb-(\d+)/);
+          if (m) tmdbId = Number(m[1]);
+        }
+        if (!tmdbId) {
+          const matches = await universalSearchMedia(show.originalTitle || show.title);
+          if (matches.length > 0) {
+            tmdbId = matches[0].id;
+            mediaType = matches[0].mediaType;
+          }
+        }
+        if (tmdbId) {
+          const tmdbRes = await fetchTMDbReviews(mediaType, tmdbId, 1);
+          tmdbReviews = tmdbRes.reviews;
+        }
+      } catch (err) {
+        console.warn('TMDb reviews crawl warning:', err);
+      }
+
+      // 2. 抓取多源实时短评与深度讨论
       const freshReviews = await crawlRealtimeReviews(show, liveReviews.length);
+      const combinedIncoming = [...tmdbReviews, ...freshReviews];
+
       setLiveReviews((prev) => {
         const existingIds = new Set(prev.map((r) => r.id));
-        const filteredNew = freshReviews.filter((r) => !existingIds.has(r.id));
+        const filteredNew = combinedIncoming.filter((r) => !existingIds.has(r.id));
         return [...filteredNew, ...prev];
       });
       setLastCrawlTime(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
       if (isManual) {
-        setCrawlNotice(`⚡ 已成功全网动态抓取并注入 ${freshReviews.length} 条关于《${show.title}》的最新实时讨论！`);
+        setCrawlNotice(`⚡ 已成功全网动态抓取并注入 ${combinedIncoming.length} 条关于《${show.title}》的最新实时讨论与全球认证影评！`);
         setTimeout(() => setCrawlNotice(null), 3500);
       }
     } catch (e) {
@@ -173,14 +201,35 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
     };
   }, [show, page, platformFilter, sentimentFilter, sortBy, publishSuccess, liveReviews]);
 
-  // 处理加载更多
-  const handleLoadMore = () => {
+  // 处理加载更多 (支持本地深度影评池 + TMDb 国际影评持续翻页)
+  const handleLoadMore = async () => {
     if (isLoadingMore || !reviewData.hasMore) return;
     setIsLoadingMore(true);
-    setTimeout(() => {
+
+    try {
+      let tmdbId: number | null = null;
+      let mediaType: 'movie' | 'tv' = (show.genres.includes('电影') || show.totalEpisodes === 1) ? 'movie' : 'tv';
+      if (show.id.startsWith('tmdb-')) {
+        const m = show.id.match(/^tmdb-(\d+)/);
+        if (m) tmdbId = Number(m[1]);
+      }
+      if (tmdbId) {
+        const nextPage = page + 1;
+        const res = await fetchTMDbReviews(mediaType, tmdbId, nextPage);
+        if (res.reviews.length > 0) {
+          setLiveReviews((prev) => {
+            const existingIds = new Set(prev.map((r) => r.id));
+            const newFiltered = res.reviews.filter((r) => !existingIds.has(r.id));
+            return [...prev, ...newFiltered];
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Load more TMDb reviews warning:', e);
+    } finally {
       setPage((prev) => prev + 1);
       setIsLoadingMore(false);
-    }, 280);
+    }
   };
 
   // 处理点赞
