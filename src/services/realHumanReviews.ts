@@ -27,16 +27,28 @@ function cleanHtml(raw: string): string {
  */
 export async function fetchLiveHumanReviews(show: TVShow, page: number = 0): Promise<ReviewComment[]> {
   try {
-    // 构造精准搜索词：英文名优先，辅以网络平台如 HBO, AMC, Netflix 等提高剧集相关度
-    const query = show.originalTitle || show.title;
-    const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=comment&hitsPerPage=10&page=${page}`;
+    // 构造精准搜索词：英文原名 + 出品流媒体 (如 "The Wire" HBO / "Severance" Apple)，精准锚定美剧讨论
+    const cleanTitle = show.originalTitle || show.title;
+    const networkKeyword = show.network ? show.network.split(/[\/\+ ]/)[0] : 'series';
+    let query = `"${cleanTitle}" ${networkKeyword}`;
+    let url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=comment&hitsPerPage=10&page=${page}`;
 
-    const res = await fetch(url);
+    let res = await fetch(url);
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
     }
 
-    const data = await res.json();
+    let data = await res.json();
+    
+    // 如果精准词结果较少，降级为直搜剧名
+    if (!data.hits || data.hits.length === 0) {
+      url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(cleanTitle)}&tags=comment&hitsPerPage=10&page=${page}`;
+      res = await fetch(url);
+      if (res.ok) {
+        data = await res.json();
+      }
+    }
+
     if (!data.hits || data.hits.length === 0) {
       return [];
     }
