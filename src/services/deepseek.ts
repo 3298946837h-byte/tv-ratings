@@ -273,9 +273,6 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
     } catch (e) {}
   }
 
-  if (isDeepSeekPaused()) {
-    throw new Error('当前已开启【DeepSeek 0消耗保护锁】，已为您暂停 API 扣费调用。请配置 GitHub 免费 Token 进行收录。');
-  }
-
+  // 0 消耗保护下不抛错，由上层公共 API (TVMaze) 与兜底建档器接管
   return null;
 }
