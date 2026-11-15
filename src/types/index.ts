@@ -12,16 +12,21 @@ export interface PlatformRating {
 
 export interface ReviewComment {
   id: string;
-  source: 'douban' | 'rotten_tomatoes' | 'imdb' | 'metacritic';
+  source: 'douban' | 'rotten_tomatoes' | 'imdb' | 'metacritic' | 'reddit' | 'user';
   author: string;
   avatar?: string;
   rating?: number;        // 1-10 or 1-5
   date: string;
+  title?: string;         // 深度长评标题
   content: string;
   sentiment: 'positive' | 'negative' | 'mixed';
   likes?: number;
   isCritic?: boolean;     // 是否权威专业影评人
   publication?: string;   // 媒体出处 (e.g. "The Hollywood Reporter", "Rolling Stone")
+  tags?: string[];        // 标签如 ["单集封神", "配乐顶级", "含微量剧透", "深度长评"]
+  replyCount?: number;    // 回复/互动数
+  isLongReview?: boolean; // 是否深度长评
+  userLiked?: boolean;    // 当前用户是否已点赞
 }
 
 export interface EpisodeRating {
