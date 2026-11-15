@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { MediaAutocompleteDropdown } from './MediaAutocompleteDropdown';
 import { TMDBMediaSearchResult } from '../services/tmdbOmdbService';
+import { TVShow } from '../types';
 
 interface NavbarProps {
   searchQuery: string;
@@ -24,6 +25,7 @@ interface NavbarProps {
   onOpenShare: () => void;
   activeTag: string;
   onSelectTag: (tag: string) => void;
+  shows?: TVShow[];
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -37,6 +39,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAdvisor,
   onOpenAddShow,
   onOpenShare,
+  shows = [],
 }) => {
   const [isDesktopDropdownOpen, setIsDesktopDropdownOpen] = useState(false);
   const [isMobileDropdownOpen, setIsMobileDropdownOpen] = useState(false);
@@ -128,6 +131,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Live Autocomplete Suggestion Dropdown */}
             <MediaAutocompleteDropdown
               query={searchQuery}
+              localShows={shows}
               isOpen={isDesktopDropdownOpen && searchQuery.trim().length > 0}
               onClose={() => setIsDesktopDropdownOpen(false)}
               onSelect={(item) => {
@@ -271,6 +275,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Mobile Live Autocomplete Dropdown */}
             <MediaAutocompleteDropdown
               query={searchQuery}
+              localShows={shows}
               isOpen={isMobileDropdownOpen && searchQuery.trim().length > 0}
               onClose={() => setIsMobileDropdownOpen(false)}
               onSelect={(item) => {

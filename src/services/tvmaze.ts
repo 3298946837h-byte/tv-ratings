@@ -1,4 +1,5 @@
 import { TVShow, SeasonInfo, EpisodeRating } from '../types';
+import { fetchWithTimeout } from './tmdbOmdbService';
 
 // 常用欧美剧经典与热门剧集中英文映射表
 export const CHINESE_TO_ENGLISH_MAP: Record<string, string> = {
@@ -116,11 +117,11 @@ export async function searchTVMazeShow(query: string): Promise<TVShow | null> {
 
   try {
     const url = `https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(englishQuery)}&embed[]=episodes`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url, {}, 2500);
     if (!res.ok) {
       // 如果英文查不到，尝试原 query
       if (englishQuery !== cleanQuery) {
-        const fallbackRes = await fetch(`https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(cleanQuery)}&embed[]=episodes`);
+        const fallbackRes = await fetchWithTimeout(`https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(cleanQuery)}&embed[]=episodes`, {}, 2500);
         if (!fallbackRes.ok) return null;
         return parseTVMazeData(await fallbackRes.json(), cleanQuery, originalChinese);
       }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TMDBMediaSearchResult, universalSearchMedia } from '../services/tmdbOmdbService';
 import { Film, Tv, Star, Loader2, Sparkles } from 'lucide-react';
+import { TVShow } from '../types';
 
 interface MediaAutocompleteDropdownProps {
   query: string;
@@ -8,6 +9,7 @@ interface MediaAutocompleteDropdownProps {
   onClose: () => void;
   onSelect: (item: TMDBMediaSearchResult) => void;
   onSearchAll: (q: string) => void;
+  localShows?: TVShow[];
 }
 
 export const MediaAutocompleteDropdown: React.FC<MediaAutocompleteDropdownProps> = ({
@@ -16,6 +18,7 @@ export const MediaAutocompleteDropdown: React.FC<MediaAutocompleteDropdownProps>
   onClose,
   onSelect,
   onSearchAll,
+  localShows = [],
 }) => {
   const [results, setResults] = useState<TMDBMediaSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -38,7 +41,7 @@ export const MediaAutocompleteDropdown: React.FC<MediaAutocompleteDropdownProps>
     };
   }, [onClose]);
 
-  // Debounced search
+  // Instant local matching (0ms) + debounced remote search
   useEffect(() => {
     const clean = query.trim().replace(/[《》]/g, '');
     if (!clean || clean.length < 1) {
@@ -46,6 +49,29 @@ export const MediaAutocompleteDropdown: React.FC<MediaAutocompleteDropdownProps>
       setIsLoading(false);
       return;
     }
+
+    // 1. 本地已收录片库即时匹配 (0ms 瞬间呈现，离线/弱网绝不白屏)
+    const localMatches: TMDBMediaSearchResult[] = (localShows || [])
+      .filter(
+        (s) =>
+          s.title.toLowerCase().includes(clean.toLowerCase()) ||
+          s.originalTitle.toLowerCase().includes(clean.toLowerCase())
+      )
+      .slice(0, 5)
+      .map((s) => ({
+        id: 0,
+        mediaType: 'tv',
+        title: s.title,
+        originalTitle: s.originalTitle,
+        year: s.year,
+        poster: s.poster,
+        backdrop: s.backdrop,
+        overview: s.summary,
+        voteAverage: s.compositeScore,
+        voteCount: s.ratings.imdb?.voteCount || 0,
+      }));
+
+    setResults(localMatches);
 
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -58,7 +84,9 @@ export const MediaAutocompleteDropdown: React.FC<MediaAutocompleteDropdownProps>
       try {
         const data = await universalSearchMedia(clean);
         if (!controller.signal.aborted) {
-          setResults(data.slice(0, 8));
+          const existingTitles = new Set(localMatches.map((m) => m.title.toLowerCase()));
+          const extra = data.filter((d) => !existingTitles.has(d.title.toLowerCase()));
+          setResults([...localMatches, ...extra].slice(0, 8));
           setActiveIndex(-1);
         }
       } catch (err: any) {
@@ -70,13 +98,13 @@ export const MediaAutocompleteDropdown: React.FC<MediaAutocompleteDropdownProps>
           setIsLoading(false);
         }
       }
-    }, 250);
+    }, 200);
 
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [query, localShows]);
 
   // Keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {

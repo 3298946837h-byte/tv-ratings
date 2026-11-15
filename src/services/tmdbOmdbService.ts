@@ -24,6 +24,25 @@ export function setOMDBKey(key: string): void {
   localStorage.setItem('ratevibe_omdb_key', key.trim());
 }
 
+/**
+ * 带有毫秒级硬超时控制的 fetch 封装（防止移动端/弱网环境 DNS 污染或阻断无限挂起假死）
+ */
+export async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 2500): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(id);
+    return res;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
 export interface TMDBMediaSearchResult {
   id: number;
   mediaType: 'movie' | 'tv';
@@ -107,7 +126,7 @@ export async function universalSearchMedia(query: string): Promise<TMDBMediaSear
   // 1. 如果匹配 IMDb ID 模式 (tt15398776)
   if (/^tt\d{7,8}$/i.test(clean)) {
     try {
-      const findRes = await fetch(`https://api.themoviedb.org/3/find/${clean}?api_key=${tmdbKey}&external_source=imdb_id`);
+      const findRes = await fetchWithTimeout(`https://api.themoviedb.org/3/find/${clean}?api_key=${tmdbKey}&external_source=imdb_id`, {}, 2500);
       if (findRes.ok) {
         const findData = await findRes.json();
         const matches: any[] = [
@@ -128,7 +147,7 @@ export async function universalSearchMedia(query: string): Promise<TMDBMediaSear
   if (results.length < 2) {
     try {
       const enUrl = `https://api.themoviedb.org/3/search/multi?api_key=${tmdbKey}&language=en-US&query=${encodeURIComponent(clean)}&include_adult=false`;
-      const enRes = await fetch(enUrl);
+      const enRes = await fetchWithTimeout(enUrl, {}, 2500);
       if (enRes.ok) {
         const enData = await enRes.json();
         const enItems = (enData.results || [])
@@ -160,7 +179,7 @@ export async function searchTMDB(query: string): Promise<TMDBMediaSearchResult[]
   const url = `https://api.themoviedb.org/3/search/multi?api_key=${tmdbKey}&language=zh-CN&query=${encodeURIComponent(clean)}&include_adult=false`;
 
   try {
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url, {}, 2500);
     if (!res.ok) return [];
     const data = await res.json();
     const results = data.results || [];
@@ -188,7 +207,7 @@ export async function fetchFullShowDetailsFromTMDBAndOMDB(
   try {
     // 1. 获取 TMDb 核心资料与关联信息 (包含 external_ids, credits, reviews)
     const tmdbUrl = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${tmdbKey}&language=zh-CN&append_to_response=external_ids,credits,reviews`;
-    const res = await fetch(tmdbUrl);
+    const res = await fetchWithTimeout(tmdbUrl, {}, 2500);
     if (!res.ok) return null;
     const data = await res.json();
 
@@ -202,7 +221,7 @@ export async function fetchFullShowDetailsFromTMDBAndOMDB(
     let summary = data.overview;
     if (!summary || summary.length < 10) {
       try {
-        const enRes = await fetch(`https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${tmdbKey}&language=en-US`);
+        const enRes = await fetchWithTimeout(`https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${tmdbKey}&language=en-US`, {}, 2000);
         if (enRes.ok) {
           const enData = await enRes.json();
           if (enData.overview) summary = enData.overview;
@@ -237,7 +256,7 @@ export async function fetchFullShowDetailsFromTMDBAndOMDB(
 
     if (imdbId) {
       try {
-        const omdbRes = await fetch(`https://www.omdbapi.com/?i=${imdbId}&apikey=${omdbKey}&plot=full`);
+        const omdbRes = await fetchWithTimeout(`https://www.omdbapi.com/?i=${imdbId}&apikey=${omdbKey}&plot=full`, {}, 2500);
         if (omdbRes.ok) {
           const json = await omdbRes.json();
           if (json.Response !== 'False') {
@@ -527,7 +546,7 @@ export async function discoverInfiniteShows(
 
   try {
     const url = `https://api.themoviedb.org/3/discover/${endpoint}?${params.toString()}`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url, {}, 3500);
     if (!res.ok) {
       return { items: [], totalPages: 0, page, hasMore: false };
     }
@@ -635,7 +654,7 @@ export async function fetchTMDbReviews(
   const url = `https://api.themoviedb.org/3/${mediaType}/${tmdbId}/reviews?api_key=${tmdbKey}&page=${page}`;
 
   try {
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url, {}, 3000);
     if (!res.ok) return { reviews: [], hasMore: false };
     const data = await res.json();
     const results = data.results || [];
