@@ -166,7 +166,22 @@ export function App() {
     setSearchProgress(`正在从全网自动抓取最新美剧《${nextTitle}》的各大平台权威评分与评论...`);
 
     try {
-      // 1. 优先调用 100% 免费公共影视 API (TVMaze, 0 Token / 0 费用)
+      // 1. 优先调用 100% 免费公共影视 API (TMDb, 0 Token / 0 费用)
+      const tmdbShow = await searchAndBuildShowWithTMDB(nextTitle.split(' ')[0]);
+      if (tmdbShow) {
+        setShows((prev) => {
+          const updated = [...prev, tmdbShow];
+          try {
+            localStorage.setItem('ratevibe_cached_shows', JSON.stringify(updated));
+          } catch (e) {}
+          return updated;
+        });
+        setStreamToast(`✨ 已通过免费公共片库实时抓取：《${tmdbShow.title}》！`);
+        setTimeout(() => setStreamToast(null), 3500);
+        return;
+      }
+
+      // 2. 备用免费公共欧美剧集 API (TVMaze, 0 Token / 0 费用)
       const tvMazeShow = await searchTVMazeShow(nextTitle);
       if (tvMazeShow) {
         setShows((prev) => {
@@ -181,90 +196,10 @@ export function App() {
         return;
       }
 
-      const generated = (await analyzeShowWithDeepSeek(nextTitle)) || generateOfflineFallbackShow(nextTitle);
-      const newShow: TVShow = {
-        id: `auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        title: generated.title || nextTitle,
-        originalTitle: generated.originalTitle || nextTitle,
-        year: generated.year || '2023 - 2024',
-        totalSeasons: generated.totalSeasons || 1,
-        totalEpisodes: generated.totalEpisodes || 10,
-        status: generated.status || 'Returning Series',
-        genres: generated.genres || ['剧情'],
-        network: generated.network || 'HBO / Max',
-        poster:
-          'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80',
-        backdrop:
-          'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1600&auto=format&fit=crop&q=80',
-        summary: generated.summary || '全网自动实时抓取剧情梗概',
-        compositeScore: generated.compositeScore || 8.5,
-        verdictTier: generated.verdictTier || 'must_watch',
-        tagline: generated.tagline || '由 DeepSeek AI 全网自动实时收录',
-        hasEndingCollapse: Boolean(generated.hasEndingCollapse),
-        hasCulturalDivergence: Boolean(generated.hasCulturalDivergence),
-        isTrap: Boolean(generated.isTrap),
-        badges: generated.badges || ['全网自动收录'],
-        ratings: generated.ratings || {
-          imdb: { score: 8.5, maxScore: 10, normalized: 8.5, voteCount: 180000, verdict: 'IMDb 8.5' },
-          rottenTomatoes: { score: 90, maxScore: 100, normalized: 9.0, tomatometer: 90, popcornmeter: 88, criticsConsensus: '全网好评', verdict: 'Certified Fresh' },
-          metacritic: { score: 80, maxScore: 100, normalized: 8.0, metascore: 80, userScore: 8.2 },
-          douban: { score: 8.8, maxScore: 10, normalized: 8.8, voteCount: 120000, starDistribution: [60, 25, 10, 3, 2] },
-          tmdb: { score: 8.2, maxScore: 10, normalized: 8.2, voteCount: 1500 },
-        },
-        radarDimensions: generated.radarDimensions || {
-          criticPraise: 8.5,
-          popularBuzz: 8.8,
-          chineseTaste: 8.6,
-          plotConsistency: 8.4,
-          endingSatisfaction: 8.0,
-        },
-        aiInsight: generated.aiInsight || {
-          pros: ['剧作严谨扎实', '演员演技出色', '制作水准高'],
-          cons: ['部分段落需沉浸适应'],
-          audienceFit: '推荐给所有美剧爱好者',
-          avoidFit: '追求极致快餐爽剧的观众',
-        },
-        seasons: generated.seasons || [
-          {
-            seasonNumber: 1,
-            episodesCount: 10,
-            averageScore: generated.compositeScore || 8.5,
-            trend: 'stable',
-            episodes: [
-              { season: 1, episode: 1, title: 'Pilot', score: 8.5, votes: 20000 },
-              { season: 1, episode: 10, title: 'Finale', score: 9.0, votes: 35000, isMilestone: true },
-            ],
-          },
-        ],
-        comments: generated.comments || [
-          {
-            id: `c-auto-${Date.now()}`,
-            source: 'douban',
-            author: 'DeepSeek 实时自动收录',
-            rating: 9,
-            date: new Date().toISOString().split('T')[0],
-            content: `【全网自动收录】《${generated.title}》在权威平台评价稳健，剧情与口碑表现出色。`,
-            sentiment: 'positive',
-            likes: 1560,
-          },
-        ],
-        lastUpdated: '刚刚全网自动注入',
-      };
-
-      setShows((prev) => {
-        const updated = [...prev, newShow];
-        try {
-          localStorage.setItem('ratevibe_cached_shows', JSON.stringify(updated));
-        } catch (e) {
-          console.error(e);
-        }
-        return updated;
-      });
-
-      setStreamToast(`✨ 已从全网自动抓取并注入新剧：《${newShow.title}》（综合分 ${newShow.compositeScore}）！`);
-      setTimeout(() => setStreamToast(null), 4000);
+      // 严禁在后台队列任务中静默调用 DeepSeek（坚决奉行零后台消耗铁律，保全用户钱包）
+      return;
     } catch (err: any) {
-      console.error(err);
+      console.error('Queue fetch error:', err);
     } finally {
       setIsSearchingWeb(false);
       setSearchProgress('');

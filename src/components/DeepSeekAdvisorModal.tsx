@@ -11,6 +11,14 @@ import {
   setGitHubModel,
   AIProvider,
   DeepSeekMessage,
+  getDailyUsage,
+  resetDailyUsage,
+  DAILY_BUDGET_CAP_CNY,
+  DAILY_MAX_CALLS,
+  maskApiKey,
+  isDeepSeekPaused,
+  setDeepSeekPaused,
+  DeepSeekDailyUsage,
 } from '../services/deepseek';
 import {
   Bot,
@@ -25,6 +33,12 @@ import {
   Cpu,
   Gift,
   HelpCircle,
+  ShieldCheck,
+  ShieldAlert,
+  Eye,
+  EyeOff,
+  PauseCircle,
+  PlayCircle,
 } from 'lucide-react';
 
 interface DeepSeekAdvisorModalProps {
@@ -63,7 +77,18 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
   const [githubModel, setGitHubModelState] = useState(getGitHubModel());
   const [keySaved, setKeySaved] = useState(false);
 
+  // 一角钱熔断与安全状态
+  const [dailyUsage, setDailyUsage] = useState<DeepSeekDailyUsage>(getDailyUsage());
+  const [isPaused, setIsPaused] = useState<boolean>(isDeepSeekPaused());
+  const [showRawKey, setShowRawKey] = useState<boolean>(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 每次打开弹窗或状态变化时同步最新真实配额
+  useEffect(() => {
+    setDailyUsage(getDailyUsage());
+    setIsPaused(isDeepSeekPaused());
+  }, [isOpen]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -93,6 +118,7 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
       ]);
     } finally {
       setIsLoading(false);
+      setDailyUsage(getDailyUsage());
     }
   };
 
@@ -145,13 +171,75 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
               title="配置 AI 引擎与 Key"
             >
               <Cpu className="w-3.5 h-3.5 text-sky-400" />
-              <span className="hidden sm:inline">AI 引擎配置</span>
+              <span className="hidden sm:inline">AI 引擎与限额</span>
             </button>
             <button
               onClick={onClose}
               className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* 一角钱每日硬熔断监控栏 (Daily Budget & Circuit Breaker Monitor) */}
+        <div className="px-3.5 sm:px-4 py-2.5 bg-slate-950/95 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-slate-200 flex items-center gap-1">
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+              今日安全配额监控:
+            </span>
+            <span className="font-mono text-amber-300 font-bold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800">
+              ¥{dailyUsage.estimatedCostCNY.toFixed(4)} / ¥0.100 (上限一角钱)
+            </span>
+            <span className="font-mono text-slate-300 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+              已调用 {dailyUsage.callCount} / {DAILY_MAX_CALLS} 次
+            </span>
+            {dailyUsage.isCircuitBroken ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-950 text-red-300 border border-red-800 font-bold flex items-center gap-1 animate-pulse">
+                🛑 一角钱硬熔断已生效 (已自动切断保护钱包)
+              </span>
+            ) : isPaused ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                ⏸️ 已暂停扣费调用
+              </span>
+            ) : (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold flex items-center gap-1">
+                🟢 一角钱保护生效中 (剩余额度: ¥{dailyUsage.remainingCostCNY.toFixed(4)})
+              </span>
+            )}
+          </div>
+
+          {/* Progress Bar & Actions */}
+          <div className="flex items-center gap-2 w-full sm:w-52 flex-shrink-0">
+            <div className="flex-1 bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+              <div
+                className={`h-full transition-all duration-500 ${
+                  dailyUsage.estimatedCostCNY >= 0.08
+                    ? 'bg-red-500'
+                    : dailyUsage.estimatedCostCNY >= 0.05
+                    ? 'bg-amber-500'
+                    : 'bg-emerald-500'
+                }`}
+                style={{
+                  width: `${Math.min(100, Math.max(5, (dailyUsage.estimatedCostCNY / DAILY_BUDGET_CAP_CNY) * 100))}%`,
+                }}
+              />
+            </div>
+            <button
+              onClick={() => {
+                const next = !isPaused;
+                setIsPaused(next);
+                setDeepSeekPaused(next);
+              }}
+              className={`text-[10px] px-2 py-1 rounded font-bold cursor-pointer transition-colors border ${
+                isPaused
+                  ? 'bg-emerald-900 text-emerald-200 border-emerald-700 hover:bg-emerald-800'
+                  : 'bg-amber-950 text-amber-300 border-amber-800 hover:bg-amber-900'
+              }`}
+              title="一键急停开关"
+            >
+              {isPaused ? '恢复扣费' : '一键急停'}
             </button>
           </div>
         </div>
@@ -251,21 +339,67 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
             </div>
 
             {/* DeepSeek API Key Config */}
-            <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl space-y-2">
+            <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-200">DeepSeek API Key</span>
-                <span className="text-[10px] text-slate-400">已默认预装站长专属 Key</span>
+                <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
+                  DeepSeek 官方 API Key (已启用每日一角钱硬熔断保护)
+                </span>
+                <span className="text-[10px] text-amber-400 font-bold bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-800">
+                  每日硬顶: ¥0.10 / 50次
+                </span>
               </div>
-              <input
-                type="password"
-                value={customDeepSeekKey}
-                onChange={(e) => setCustomDeepSeekKey(e.target.value)}
-                placeholder="sk-..."
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-sky-500"
-              />
+
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showRawKey ? 'text' : 'password'}
+                    value={customDeepSeekKey}
+                    onChange={(e) => setCustomDeepSeekKey(e.target.value)}
+                    placeholder="sk-2f4f... (DeepSeek API Key)"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-3 pr-8 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-sky-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowRawKey(!showRawKey)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+                    title={showRawKey ? '隐藏 Key' : '显示完整 Key'}
+                  >
+                    {showRawKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomDeepSeekKey('sk-2f4f22b6aeca4ad4b34f0092043ea9f9');
+                  }}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] rounded-lg transition-colors whitespace-nowrap cursor-pointer border border-slate-700"
+                  title="恢复站长专属 Key"
+                >
+                  填入站长 Key
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800">
+                <span>🛡️ 六重防消耗体系：零后台静默调用 · 5秒防抖 · 500Token严格截断 · 离线知识库拦截</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetDailyUsage();
+                    setDailyUsage(getDailyUsage());
+                  }}
+                  className="text-amber-400 hover:underline cursor-pointer flex-shrink-0"
+                >
+                  重置今日测试用量
+                </button>
+              </div>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[10px] text-slate-500">
+                当前掩码状态: <code className="text-sky-300 font-mono">{maskApiKey(customDeepSeekKey)}</code>
+              </span>
               <button
                 type="button"
                 onClick={handleSaveConfig}

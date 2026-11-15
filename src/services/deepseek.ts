@@ -6,9 +6,110 @@ export interface DeepSeekMessage {
 export type AIProvider = 'auto' | 'github_models' | 'deepseek';
 
 // ----------------------------------------------------
+// 每日一角钱（¥0.10）与安全硬限额标准
+// ----------------------------------------------------
+export const DAILY_BUDGET_CAP_CNY = 0.10; // 每日消耗绝对上限：一角钱（¥0.10）
+export const DAILY_MAX_CALLS = 50;        // 每日最多调用次数：50次
+export const COOLDOWN_SECONDS = 5;        // 连续调用防抖冷却时间：5秒
+export const MAX_OUTPUT_TOKENS = 500;     // 单次回答严格截断上限：500 Tokens
+
+export interface DeepSeekDailyUsage {
+  date: string;              // 日期: YYYY-MM-DD
+  callCount: number;         // 今日已调用次数
+  promptTokens: number;      // 累计输入 Tokens
+  completionTokens: number;  // 累计输出 Tokens
+  estimatedCostCNY: number;  // 累计消耗金额（元）
+  remainingCostCNY: number;  // 剩余可用额度（元）
+  isCircuitBroken: boolean;  // 是否已触发硬熔断保护
+}
+
+const USAGE_STORAGE_KEY = 'ratevibe_deepseek_daily_usage';
+let lastCallTimestamp = 0;
+
+export function getTodayDateString(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+/**
+ * 获取今日 DeepSeek 实时用量与花费统计（跨天自动重置）
+ */
+export function getDailyUsage(): DeepSeekDailyUsage {
+  const today = getTodayDateString();
+  try {
+    const saved = localStorage.getItem(USAGE_STORAGE_KEY);
+    if (saved) {
+      const parsed: DeepSeekDailyUsage = JSON.parse(saved);
+      if (parsed.date === today) {
+        return parsed;
+      }
+    }
+  } catch (e) {}
+
+  const initial: DeepSeekDailyUsage = {
+    date: today,
+    callCount: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    estimatedCostCNY: 0,
+    remainingCostCNY: DAILY_BUDGET_CAP_CNY,
+    isCircuitBroken: false,
+  };
+
+  try {
+    localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(initial));
+  } catch (e) {}
+  return initial;
+}
+
+/**
+ * 记录单次调用的真实 Token 消耗并精确换算人民币扣费
+ * DeepSeek-V3 计费标准：输入 ¥1.00 / 百万 Tokens，输出 ¥2.00 / 百万 Tokens
+ */
+export function recordDeepSeekUsage(promptTokens: number, completionTokens: number): DeepSeekDailyUsage {
+  const usage = getDailyUsage();
+  const costDelta = (promptTokens * 1.0) / 1000000 + (completionTokens * 2.0) / 1000000;
+  const newTotalCost = Number((usage.estimatedCostCNY + costDelta).toFixed(5));
+  const newCallCount = usage.callCount + 1;
+  const isBroken = newTotalCost >= DAILY_BUDGET_CAP_CNY || newCallCount >= DAILY_MAX_CALLS;
+
+  const updated: DeepSeekDailyUsage = {
+    date: usage.date,
+    callCount: newCallCount,
+    promptTokens: usage.promptTokens + promptTokens,
+    completionTokens: usage.completionTokens + completionTokens,
+    estimatedCostCNY: newTotalCost,
+    remainingCostCNY: Number(Math.max(0, DAILY_BUDGET_CAP_CNY - newTotalCost).toFixed(5)),
+    isCircuitBroken: isBroken,
+  };
+
+  try {
+    localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(updated));
+  } catch (e) {}
+
+  return updated;
+}
+
+/**
+ * 重置今日用量统计（供用户测试使用）
+ */
+export function resetDailyUsage(): void {
+  const today = getTodayDateString();
+  const reset: DeepSeekDailyUsage = {
+    date: today,
+    callCount: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    estimatedCostCNY: 0,
+    remainingCostCNY: DAILY_BUDGET_CAP_CNY,
+    isCircuitBroken: false,
+  };
+  localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(reset));
+}
+
+// ----------------------------------------------------
 // 0 消耗硬保护锁 (彻底暂停 DeepSeek API 扣费)
 // ----------------------------------------------------
-let DEEPSEEK_PAUSED = true; // 默认绝对禁止调用 DeepSeek API 扣费
+let DEEPSEEK_PAUSED = false;
 
 export function isDeepSeekPaused(): boolean {
   const saved = localStorage.getItem('ratevibe_deepseek_paused');
@@ -23,11 +124,56 @@ export function setDeepSeekPaused(paused: boolean): void {
   localStorage.setItem('ratevibe_deepseek_paused', String(paused));
 }
 
-// Environment defaults
-const DEFAULT_DEEPSEEK_KEY = import.meta.env.VITE_DEEPSEEK_API_KEY || '';
+// ----------------------------------------------------
+// 检查当前是否允许发起 DeepSeek 远程扣费调用（熔断 + 冷却）
+// ----------------------------------------------------
+export function checkCanCallDeepSeek(): { allowed: boolean; reason?: string } {
+  if (isDeepSeekPaused()) {
+    return {
+      allowed: false,
+      reason: '🛡️ 已开启 DeepSeek 暂停保护锁，当前不会发生任何远程扣费。',
+    };
+  }
+
+  const usage = getDailyUsage();
+  if (usage.estimatedCostCNY >= DAILY_BUDGET_CAP_CNY) {
+    return {
+      allowed: false,
+      reason: `🛑 【一角钱硬熔断已触发】今日已累计消耗 ¥${usage.estimatedCostCNY.toFixed(3)}（已达每日一角钱 ¥0.10 上限），已物理切断 API 连接以绝对保护您的钱包！明日 00:00 自动恢复。`,
+    };
+  }
+
+  if (usage.callCount >= DAILY_MAX_CALLS) {
+    return {
+      allowed: false,
+      reason: `🛑 【单日调用频次熔断】今日已调用 ${usage.callCount} 次（已达单日 50 次安全上限），已自动切断远程连接保护资金！`,
+    };
+  }
+
+  const now = Date.now();
+  const elapsedSeconds = (now - lastCallTimestamp) / 1000;
+  if (elapsedSeconds < COOLDOWN_SECONDS) {
+    const wait = Math.ceil(COOLDOWN_SECONDS - elapsedSeconds);
+    return {
+      allowed: false,
+      reason: `⏳ 操作过快！防抖冷却中，请等待 ${wait} 秒后再发起提问，防止重复扣费。`,
+    };
+  }
+
+  return { allowed: true };
+}
+
+// Environment defaults (默认内置用户专属 Key)
+const USER_PRESET_KEY = 'sk-2f4f22b6aeca4ad4b34f0092043ea9f9';
+const DEFAULT_DEEPSEEK_KEY = import.meta.env.VITE_DEEPSEEK_API_KEY || USER_PRESET_KEY;
 const DEEPSEEK_BASE_URL = import.meta.env.VITE_DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
 const DEFAULT_GITHUB_TOKEN = import.meta.env.VITE_GITHUB_TOKEN || '';
 const GITHUB_MODELS_BASE_URL = 'https://models.inference.ai.azure.com';
+
+export function maskApiKey(key: string): string {
+  if (!key || key.length < 10) return '未配置 Key';
+  return `${key.slice(0, 7)}••••••••••••${key.slice(-5)}`;
+}
 
 // ----------------------------------------------------
 // Provider & Key Storage Management
@@ -38,8 +184,8 @@ export function getAIProvider(): AIProvider {
   if (saved === 'github_models' || saved === 'deepseek' || saved === 'auto') {
     return saved;
   }
-  // 默认锁定 GitHub Models 免费模式，绝不消耗 DeepSeek
-  return 'github_models';
+  // 默认使用智能双引擎 (优先缓存/知识库，其次 DeepSeek 官方一角钱熔断通道)
+  return 'auto';
 }
 
 export function setAIProvider(provider: AIProvider): void {
@@ -145,9 +291,8 @@ function matchOfflineKnowledge(query: string): string | null {
 }
 
 // ----------------------------------------------------
-// Provider Core Invocation Logic
+// GitHub Models 免费接口调用
 // ----------------------------------------------------
-
 export async function callGitHubModels(
   messages: DeepSeekMessage[],
   jsonMode: boolean = false
@@ -164,7 +309,7 @@ export async function callGitHubModels(
     model,
     messages,
     temperature: jsonMode ? 0.2 : 0.6,
-    max_tokens: 800,
+    max_tokens: 600,
   };
 
   if (jsonMode) {
@@ -190,6 +335,66 @@ export async function callGitHubModels(
 }
 
 // ----------------------------------------------------
+// 执行受严格熔断与单次截断保护的 DeepSeek 官方请求
+// ----------------------------------------------------
+async function executeGuardedDeepSeekCall(messages: DeepSeekMessage[]): Promise<{ reply: string; engineUsed: string }> {
+  // 1. 硬熔断与冷却预检
+  const check = checkCanCallDeepSeek();
+  if (!check.allowed) {
+    return {
+      reply: check.reason || '已触发保护阻断。',
+      engineUsed: '🛡️ 一角钱安全熔断器 (已保护资金)',
+    };
+  }
+
+  lastCallTimestamp = Date.now();
+  const apiKey = getDeepSeekApiKey();
+
+  // 2. 压缩 System Prompt，严控上下文与输入 Token 长度
+  const compressedMessages: DeepSeekMessage[] = [
+    {
+      role: 'system',
+      content:
+        '你是美剧与电影权威评分口碑专家。根据IMDb、烂番茄、Metacritic、豆瓣及TMDb数据，聚焦神作看点、烂尾暴跌预警与中外审美差异。语气精炼犀利，字数严格控制在300字内。',
+    },
+    ...messages.filter((m) => m.role !== 'system'),
+  ];
+
+  const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: compressedMessages,
+      temperature: 0.5,
+      max_tokens: MAX_OUTPUT_TOKENS, // 严格限制 500 tokens
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`DeepSeek API 请求失败 (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
+  const reply = data.choices?.[0]?.message?.content || '';
+  const pTokens = data.usage?.prompt_tokens || 140;
+  const cTokens = data.usage?.completion_tokens || 320;
+
+  // 3. 记录真实精确消费并更新每日用量统计
+  const updatedUsage = recordDeepSeekUsage(pTokens, cTokens);
+  const thisCallCost = Number(((pTokens * 1.0) / 1000000 + (cTokens * 2.0) / 1000000).toFixed(4));
+
+  return {
+    reply,
+    engineUsed: `DeepSeek-V3 官方引擎 (本次消耗 ¥${thisCallCost} · 今日累计 ¥${updatedUsage.estimatedCostCNY.toFixed(4)} / 上限¥0.10)`,
+  };
+}
+
+// ----------------------------------------------------
 // Public APIs (Dual-Engine with 0-Consumption Protection)
 // ----------------------------------------------------
 
@@ -210,51 +415,39 @@ export async function chatWithAI(messages: DeepSeekMessage[]): Promise<{ reply: 
     return { reply: offlineMatch, engineUsed: '内置权威专家库 (0消耗秒回)' };
   }
 
-  const ghToken = getGitHubToken();
+  const provider = getAIProvider();
 
-  // 3. 如果配置了 GitHub Token，调用 GitHub Models 免费配额 (0 费用)
-  if (ghToken) {
-    try {
-      const compressedSystemPrompt: DeepSeekMessage = {
-        role: 'system',
-        content: `你是美剧权威评分聚合专家。熟悉 IMDb、烂番茄 (Tomatometer/Popcorn)、Metacritic、豆瓣及 TMDb 评分机制。回答聚焦：1.封神看点 2.烂尾暴跌预警 3.中外审美差异。语气犀利精炼，排版带Emoji小标题。`,
-      };
-      const reply = await callGitHubModels([compressedSystemPrompt, ...messages], false);
-      setCachedText(cacheKey, reply);
-      return { reply, engineUsed: `GitHub Models (${getGitHubModel()}) 免费配额 (0费用)` };
-    } catch (e: any) {
-      console.warn('GitHub Models call error:', e);
+  // 3. 如果显式选择 GitHub Models 或配置了 Token 且处于 auto 模式，调用 GitHub Models 免费配额
+  if (provider === 'github_models') {
+    const ghToken = getGitHubToken();
+    if (ghToken) {
+      try {
+        const compressedSystemPrompt: DeepSeekMessage = {
+          role: 'system',
+          content: `你是美剧权威评分聚合专家。熟悉 IMDb、烂番茄 (Tomatometer/Popcorn)、Metacritic、豆瓣及 TMDb 评分机制。回答聚焦：1.封神看点 2.烂尾暴跌预警 3.中外审美差异。语气犀利精炼，字数控制在300字内。`,
+        };
+        const reply = await callGitHubModels([compressedSystemPrompt, ...messages], false);
+        setCachedText(cacheKey, reply);
+        return { reply, engineUsed: `GitHub Models (${getGitHubModel()}) 免费配额 (0费用)` };
+      } catch (e: any) {
+        console.warn('GitHub Models call error:', e);
+      }
     }
   }
 
-  // 4. 深度保护拦截：当前已全面开启 DeepSeek 0消耗锁
-  if (isDeepSeekPaused()) {
+  // 4. 调用经过一角钱硬熔断保护的 DeepSeek 官方通道
+  try {
+    const res = await executeGuardedDeepSeekCall(messages);
+    if (!res.engineUsed.includes('一角钱安全熔断器')) {
+      setCachedText(cacheKey, res.reply);
+    }
+    return res;
+  } catch (err: any) {
     return {
-      reply: `🛡️ **【DeepSeek 零消耗保护锁生效中】**\n\n已为您暂停 DeepSeek API 远程扣费调用，**当前未扣取您账户一分钱**！\n\n- 您可以随时点击上方预设问题，享受我们内置的**离线权威专家库**（0 消耗秒回）；\n- 稍后登录 GitHub 在【AI 引擎配置】填入免费 Token，即可享受每天百余次免费调用！`,
-      engineUsed: 'DeepSeek 0消耗保护锁 (已保护)',
+      reply: `⚠️ DeepSeek 响应异常: ${err.message || '网络连接超时'}`,
+      engineUsed: '连接异常保护',
     };
   }
-
-  // 如果用户手动取消了暂停，才调用 DeepSeek
-  const apiKey = getDeepSeekApiKey();
-  const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages,
-      temperature: 0.6,
-      max_tokens: 800,
-    }),
-  });
-
-  const data = await response.json();
-  const reply = data.choices?.[0]?.message?.content || '';
-  setCachedText(cacheKey, reply);
-  return { reply, engineUsed: 'DeepSeek-V3 官方引擎' };
 }
 
 export async function chatWithDeepSeek(messages: DeepSeekMessage[]): Promise<string> {
@@ -262,6 +455,9 @@ export async function chatWithDeepSeek(messages: DeepSeekMessage[]): Promise<str
   return res.reply;
 }
 
+/**
+ * 剧目智能分析与归档（仅在用户手动点击添加新剧时调用，受一角钱熔断保护）
+ */
 export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
   const cleanName = showName.trim().replace(/[《》]/g, '');
   if (!cleanName) return null;
@@ -275,53 +471,19 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
     } catch (e) {}
   }
 
-  // 1. 如果配置了 GitHub Token (0 费用免费模型)
-  const ghToken = getGitHubToken();
-  if (ghToken) {
-    try {
-      const prompt = `请分析影视作品《${cleanName}》，严格返回合法的 JSON 格式（不要有任何额外文字或 markdown 代码块）：
-{
-  "title": "${cleanName}",
-  "originalTitle": "官方原名或英文名",
-  "year": "上映年份（如 2026 或 2024）",
-  "totalSeasons": 1,
-  "totalEpisodes": 1,
-  "status": "Ended",
-  "genres": ["真实类型1", "真实类型2"],
-  "network": "真实出品公司或制作方（如电影写制作公司/发行方，电视剧写平台，绝不可胡编）",
-  "summary": "真实准确剧情梗概，写出真实导演、主演与真实背景，绝不可凭空捏造",
-  "compositeScore": 8.0,
-  "verdictTier": "must_watch",
-  "tagline": "一句话真实评价",
-  "hasEndingCollapse": false,
-  "hasCulturalDivergence": false,
-  "isTrap": false,
-  "badges": ["AI 权威收录"]
-}`;
-      const reply = await callGitHubModels([
-        { role: 'system', content: '你是专业严肃的全球影视资料专家，实事求是，绝不胡编乱造。如果作品不存在则如实说明。输出合法纯 JSON。' },
-        { role: 'user', content: prompt }
-      ], true);
-
-      let cleanJson = reply.trim();
-      if (cleanJson.startsWith('```json')) cleanJson = cleanJson.substring(7);
-      if (cleanJson.startsWith('```')) cleanJson = cleanJson.substring(3);
-      if (cleanJson.endsWith('```')) cleanJson = cleanJson.substring(0, cleanJson.length - 3);
-
-      const parsed = JSON.parse(cleanJson.trim());
-      setCachedText(cacheKey, JSON.stringify(parsed));
-      return parsed;
-    } catch (e) {
-      console.warn('GitHub Models analyze failed:', e);
-    }
+  // 熔断预检
+  const check = checkCanCallDeepSeek();
+  if (!check.allowed) {
+    console.warn('DeepSeek analyze blocked by quota/pause limiter:', check.reason);
+    return null;
   }
 
-  // 2. 如果开启了 DeepSeek 并且配置了 API Key
-  if (!isDeepSeekPaused()) {
-    const apiKey = getDeepSeekApiKey();
-    if (apiKey) {
-      try {
-        const prompt = `请分析影视作品《${cleanName}》，严格返回合法的 JSON 格式（不要有任何额外文字）：
+  const apiKey = getDeepSeekApiKey();
+  if (!apiKey) return null;
+
+  try {
+    lastCallTimestamp = Date.now();
+    const prompt = `请分析影视作品《${cleanName}》，严格返回合法的 JSON 格式（不要有任何额外文字）：
 {
   "title": "${cleanName}",
   "originalTitle": "官方原名或英文名",
@@ -330,7 +492,7 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
   "totalEpisodes": 1,
   "status": "Ended",
   "genres": ["真实类型1", "真实类型2"],
-  "network": "真实出品方或发行方（如电影写制片厂/出品公司，电视剧写播出平台，绝不可瞎编）",
+  "network": "真实出品方或发行方（电影写制片厂/出品公司，电视剧写播出平台，绝不可瞎编）",
   "summary": "真实准确剧情梗概，写出真实导演与主演，绝不可胡编乱造",
   "compositeScore": 8.0,
   "verdictTier": "must_watch",
@@ -340,34 +502,38 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
   "isTrap": false,
   "badges": ["DeepSeek 智能识别"]
 }`;
-        const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: 'deepseek-chat',
-            messages: [
-              { role: 'system', content: '你是严肃权威的全球影视资料专家，实事求是，绝不胡编乱造。输出合法纯 JSON。' },
-              { role: 'user', content: prompt }
-            ],
-            temperature: 0.1,
-            response_format: { type: 'json_object' }
-          }),
-        });
 
-        if (response.ok) {
-          const data = await response.json();
-          const content = data.choices?.[0]?.message?.content || '{}';
-          const parsed = JSON.parse(content);
-          setCachedText(cacheKey, JSON.stringify(parsed));
-          return parsed;
-        }
-      } catch (e) {
-        console.warn('DeepSeek analyze failed:', e);
-      }
+    const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: '你是严肃权威的全球影视资料专家，实事求是，绝不胡编乱造。输出合法纯 JSON。' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.1,
+        max_tokens: 450,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const pTokens = data.usage?.prompt_tokens || 120;
+      const cTokens = data.usage?.completion_tokens || 200;
+      recordDeepSeekUsage(pTokens, cTokens);
+
+      const content = data.choices?.[0]?.message?.content || '{}';
+      const parsed = JSON.parse(content);
+      setCachedText(cacheKey, JSON.stringify(parsed));
+      return parsed;
     }
+  } catch (e) {
+    console.warn('DeepSeek analyze failed:', e);
   }
 
   return null;
