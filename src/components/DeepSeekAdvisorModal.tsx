@@ -221,13 +221,16 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-bold text-slate-200 flex items-center gap-1">
               <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
-              今日安全配额监控:
+              对话安全限额:
             </span>
             <span className="font-mono text-amber-300 font-bold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800">
               ¥{dailyUsage.estimatedCostCNY.toFixed(4)} / ¥0.100 (上限一角钱)
             </span>
             <span className="font-mono text-slate-300 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
               已调用 {dailyUsage.callCount} / {DAILY_MAX_CALLS} 次
+            </span>
+            <span className="text-[10px] text-sky-300 bg-sky-950/80 px-2 py-0.5 rounded border border-sky-800 font-medium">
+              ⚡ 搜索建档：DeepSeek Flash 不限额
             </span>
             {dailyUsage.isCircuitBroken ? (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-950 text-red-300 border border-red-800 font-bold flex items-center gap-1 animate-pulse">

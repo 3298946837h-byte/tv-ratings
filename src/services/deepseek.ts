@@ -570,7 +570,7 @@ export async function chatWithDeepSeek(messages: DeepSeekMessage[]): Promise<str
 }
 
 /**
- * 剧目智能分析与归档（仅在用户手动点击添加新剧时调用，受一角钱熔断保护）
+ * 剧目智能分析与归档（用于全网搜索与添加新剧：使用用户的 DeepSeek-Flash API，100% 不限额）
  */
 export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
   const cleanName = showName.trim().replace(/[《》]/g, '');
@@ -585,20 +585,12 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
     } catch (e) {}
   }
 
-  // 熔断预检
-  const check = checkCanCallDeepSeek();
-  if (!check.allowed) {
-    console.warn('DeepSeek analyze blocked by quota/pause limiter:', check.reason);
-    return null;
-  }
-
+  // 搜索建档专线：使用用户的 DeepSeek-Flash API，100% 不限额（不占用且不受每日一角钱限额与熔断锁阻拦）
   const apiKey = getDeepSeekApiKey();
   if (!apiKey) return null;
 
-  try {
-    lastCallTimestamp = Date.now();
-    const prompt = `请分析影视作品《${cleanName}》。
-如果该作品确实存在（已上映或已有明确制作信息），请严格返回合法 JSON：
+  const prompt = `请分析影视作品《${cleanName}》。
+如果该作品确实存在（已上映或已有明确制作信息），请严格返回合法纯 JSON：
 {
   "notFound": false,
   "title": "${cleanName}",
@@ -616,7 +608,7 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
   "hasEndingCollapse": false,
   "hasCulturalDivergence": false,
   "isTrap": false,
-  "badges": ["DeepSeek 智能识别"]
+  "badges": ["DeepSeek Flash 智能收录"]
 }
 如果该影视作品不存在、未上映、查无实据或信息不足，绝不可编造任何虚假评分和平台，请严格返回：
 {
@@ -624,40 +616,77 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
   "reason": "查无实据或未公映"
 }`;
 
-    const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [
-          { role: 'system', content: '你是严肃权威的全球影视资料专家，实事求是，绝不胡编乱造。如果查无此片，必须返回 notFound: true。输出合法纯 JSON。' },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.1,
-        max_tokens: 450,
-        response_format: { type: 'json_object' },
-      }),
-    });
+  // 内部辅助函数：执行请求与解析（超时9秒防护）
+  const callModel = async (modelName: string): Promise<any> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 9000);
 
-    if (response.ok) {
-      const data = await response.json();
-      const pTokens = data.usage?.prompt_tokens || 120;
-      const cTokens = data.usage?.completion_tokens || 200;
-      recordDeepSeekUsage(pTokens, cTokens);
+    try {
+      const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [
+            {
+              role: 'system',
+              content:
+                '你是严肃权威的全球影视资料专家，实事求是，绝不胡编乱造。如果查无此片，必须返回 notFound: true。不要输出任何多余思考过程，直接输出合法纯 JSON。',
+            },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.1,
+          max_tokens: 1200,
+          response_format: { type: 'json_object' },
+        }),
+      });
+      clearTimeout(timeoutId);
 
-      const content = data.choices?.[0]?.message?.content || '{}';
-      const parsed = JSON.parse(content);
-      if (parsed.notFound || parsed['作品名称']?.includes('查无此片') || parsed['状态']?.includes('查无此片')) {
-        return null;
+      if (response.ok) {
+        const data = await response.json();
+        let content = data.choices?.[0]?.message?.content || '{}';
+        content = content.trim();
+        if (content.startsWith('```json')) {
+          content = content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+        } else if (content.startsWith('```')) {
+          content = content.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+        const parsed = JSON.parse(content);
+        if (
+          parsed.notFound ||
+          parsed['作品名称']?.includes('查无此片') ||
+          parsed['状态']?.includes('查无此片')
+        ) {
+          return { notFound: true };
+        }
+        return parsed;
       }
-      setCachedText(cacheKey, JSON.stringify(parsed));
-      return parsed;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      console.warn(`DeepSeek ${modelName} call failed:`, err);
+    }
+    return null;
+  };
+
+  try {
+    // 1. 优先调用 deepseek-flash（根据用户需求：搜索建档使用 deepseek-flash 且不限额）
+    let result = await callModel('deepseek-flash');
+
+    // 2. 若 deepseek-flash 网络抖动，降级使用 deepseek-chat 双重安全兜底
+    if (!result) {
+      result = await callModel('deepseek-chat');
+    }
+
+    if (result && !result.notFound) {
+      setCachedText(cacheKey, JSON.stringify(result));
+      return result;
     }
   } catch (e) {
-    console.warn('DeepSeek analyze failed:', e);
+    console.warn('DeepSeek Flash analyze error:', e);
   }
 
   return null;

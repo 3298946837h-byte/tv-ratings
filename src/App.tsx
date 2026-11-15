@@ -440,13 +440,13 @@ export function App() {
       return;
     }
 
-    // 3. AI 严肃深度建档（国内直连专线，1 秒级快速响应，百万片库无死角）
-    setSearchProgress(`正在通过 DeepSeek AI 严肃影视知识库极速建档《${cleanQuery}》...`);
+    // 3. DeepSeek Flash 极速建档（不限额度极速专线，秒级响应，百万片库无死角）
+    setSearchProgress(`正在通过 DeepSeek Flash 极速影视知识库实时建档《${cleanQuery}》...`);
     let aiShow: any = null;
     try {
       aiShow = await analyzeShowWithDeepSeek(cleanQuery);
     } catch (e) {
-      console.warn('DeepSeek analyze error:', e);
+      console.warn('DeepSeek Flash analyze error:', e);
     }
 
     if (aiShow && !aiShow.notFound && aiShow.title) {
@@ -464,14 +464,14 @@ export function App() {
         network: aiShow.network || (isMovie ? '大银幕院线发行' : '综合流媒体平台'),
         poster: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80',
         backdrop: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1600&auto=format&fit=crop&q=80',
-        summary: aiShow.summary || `《${aiShow.title}》经 AI 实事求是权威核验收录。`,
+        summary: aiShow.summary || `《${aiShow.title}》经 DeepSeek Flash 实事求是权威核验收录。`,
         compositeScore: score,
         verdictTier: aiShow.verdictTier || 'recommended',
-        tagline: aiShow.tagline || (isMovie ? '🎬 真实大银幕电影作品' : '📺 智能深度影视建档'),
+        tagline: aiShow.tagline || (isMovie ? '🎬 真实大银幕电影作品' : '📺 DeepSeek Flash 智能建档'),
         hasEndingCollapse: Boolean(aiShow.hasEndingCollapse),
         hasCulturalDivergence: Boolean(aiShow.hasCulturalDivergence),
         isTrap: Boolean(aiShow.isTrap),
-        badges: aiShow.badges || [isMovie ? '电影作品' : 'AI 真实核验'],
+        badges: aiShow.badges || [isMovie ? '电影作品' : 'DeepSeek Flash 真实核验'],
         ratings: {
           imdb: { score, maxScore: 10, normalized: score, voteCount: 25000, verdict: '权威基准' },
           rottenTomatoes: { score: Math.min(99, Math.round(score * 10)), maxScore: 100, normalized: score, tomatometer: Math.min(99, Math.round(score * 10)), popcornmeter: Math.min(95, Math.round(score * 10 - 2)), criticsConsensus: aiShow.tagline || '制作与叙事水准在线。', verdict: score >= 7.5 ? 'Fresh' : 'Rotten' },
@@ -503,7 +503,7 @@ export function App() {
           {
             id: `ai-c-${Date.now()}`,
             source: 'douban',
-            author: 'AI 影视核验',
+            author: 'DeepSeek Flash 核验',
             rating: Math.round(score),
             date: new Date().toISOString().split('T')[0],
             content: `【权威资料交叉核验】《${aiShow.title}》经公开影视资料核验确有其片。剧情聚焦：${(aiShow.summary || '').slice(0, 60)}...`,
@@ -511,11 +511,11 @@ export function App() {
             likes: 150,
           },
         ],
-        lastUpdated: 'AI 真实核验',
+        lastUpdated: 'DeepSeek Flash 真实核验',
       };
       handleAddShow(constructedShow);
       setSelectedShow(constructedShow);
-      setStreamToast(`✨ 已通过 AI 权威真实建档并展示：《${constructedShow.title}》！`);
+      setStreamToast(`✨ 已通过 DeepSeek Flash 不限额极速建档并展示：《${constructedShow.title}》！`);
       setFilters((f) => ({ ...f, searchQuery: '' }));
       setTimeout(() => setStreamToast(null), 4000);
       setIsSearchingWeb(false);

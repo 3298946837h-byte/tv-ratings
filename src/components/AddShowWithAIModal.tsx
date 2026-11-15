@@ -65,7 +65,7 @@ export const AddShowWithAIModal: React.FC<AddShowWithAIModalProps> = ({
         return;
       }
 
-      // 3. 尝试调用 DeepSeek 严肃核验建档（受一角钱熔断保护，实事求是绝不胡编）
+      // 3. 尝试调用 DeepSeek Flash 极速建档（不限额度极速专线，实事求是绝不胡编）
       const generated = await analyzeShowWithDeepSeek(cleanName);
       if (generated && !generated.notFound && generated.title) {
         const isMovie = (generated.totalEpisodes === 1 && generated.totalSeasons === 1) || generated.genres?.includes('电影');
@@ -86,14 +86,14 @@ export const AddShowWithAIModal: React.FC<AddShowWithAIModalProps> = ({
             'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&auto=format&fit=crop&q=80',
           backdrop:
             'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1600&auto=format&fit=crop&q=80',
-          summary: generated.summary || `《${generated.title}》经 AI 实事求是核验收录。`,
+          summary: generated.summary || `《${generated.title}》经 DeepSeek Flash 实事求是核验收录。`,
           compositeScore: score,
           verdictTier: generated.verdictTier || 'recommended',
-          tagline: generated.tagline || (isMovie ? '🎬 真实影视大银幕电影作品' : '📺 智能深度影视建档'),
+          tagline: generated.tagline || (isMovie ? '🎬 真实影视大银幕电影作品' : '📺 DeepSeek Flash 智能建档'),
           hasEndingCollapse: Boolean(generated.hasEndingCollapse),
           hasCulturalDivergence: Boolean(generated.hasCulturalDivergence),
           isTrap: Boolean(generated.isTrap),
-          badges: generated.badges || [isMovie ? '电影作品' : 'AI 真实核验'],
+          badges: generated.badges || [isMovie ? '电影作品' : 'DeepSeek Flash 真实核验'],
           ratings: {
             imdb: {
               score,
@@ -276,10 +276,10 @@ export const AddShowWithAIModal: React.FC<AddShowWithAIModalProps> = ({
           <div className="p-3.5 bg-slate-950/60 border border-slate-800 rounded-xl text-xs text-slate-400 space-y-1">
             <div className="font-bold text-slate-300 flex items-center gap-1.5">
               <Bot className="w-3.5 h-3.5 text-sky-400" />
-              DeepSeek 全网数据检索机制：
+              DeepSeek Flash 极速检索与建档机制（不限额）：
             </div>
             <p>
-              DeepSeek 将综合检索并计算该剧在 IMDb、烂番茄、Metacritic、豆瓣及 TMDb 的评分指标，自动生成五维雷达图与 AI 优缺点诊断，直接加入网站前台展示。
+              系统优先通过 TMDb 与 TVMaze 权威片库抓取。若未直连收录，将调用用户的 DeepSeek Flash 极速大模型（不限额度）进行全网真实交叉比对与智能建档，自动生成多维度评分与优缺点分析，直接展示。
             </p>
           </div>
         </div>
