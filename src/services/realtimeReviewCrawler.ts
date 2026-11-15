@@ -111,8 +111,43 @@ const SHOW_LORE_DATABASE: Record<string, {
       '表哥在车里大声放着泰勒·斯威夫特《Love Story》猛踩油门飞驰。',
       '卡米在冷库里崩溃自白，将自我价值与痛苦捆绑的悲剧宿命。'
     ]
+  },
+  'the-peripheral': {
+    keywords: ['弗琳·费舍尔 (Flynne)', '伯顿 (Burton)', '威廉·吉布森', '大坍塌 (Jackpot)', '假体量子传输'],
+    praisePoints: [
+      '威廉·吉布森赛博朋克鼻祖硬核设定的完美视听具象化。',
+      '2032年铁锈带乡村破败感与2099年未来伦敦空寂巨型雕塑的反差极大。',
+      '科洛·莫瑞兹演技扎实，量子假体外骨骼打戏凌厉且充满科技质感。'
+    ],
+    critiquePoints: [
+      '因2023年好莱坞编剧罢工，亚马逊撤回了第二季续订，第一季留下巨大悬念被砍极为遗憾。',
+      '量子分支时间线理论信息量庞大，初看需要极高专注度。'
+    ],
+    sceneHighlights: [
+      '弗琳戴上量子触觉头显首次潜入2099年假体躯壳的眩晕视听体验。',
+      '季终弗琳在树林中牺牲旧分支开启全新平行量子线的宿命抉择。'
+    ]
   }
 };
+
+/**
+ * 智能获取剧集背景知识（支持模糊映射）
+ */
+function getLoreForShow(show: TVShow) {
+  if (SHOW_LORE_DATABASE[show.id]) return SHOW_LORE_DATABASE[show.id];
+
+  const clean = `${show.id} ${show.title} ${show.originalTitle || ''}`.toLowerCase();
+  for (const [k, v] of Object.entries(SHOW_LORE_DATABASE)) {
+    if (clean.includes(k) || clean.includes(k.replace(/-/g, ''))) {
+      return v;
+    }
+  }
+
+  if (clean.includes('边缘世界') || clean.includes('peripheral')) {
+    return SHOW_LORE_DATABASE['the-peripheral'];
+  }
+  return null;
+}
 
 /**
  * 实时动态抓取全网最新评论（纯客户端自动化运行，无需后端）
@@ -124,7 +159,7 @@ export async function crawlRealtimeReviews(
   // 模拟真实全网检索延迟 (180ms - 450ms)
   await new Promise((resolve) => setTimeout(resolve, 260));
 
-  const lore = SHOW_LORE_DATABASE[show.id];
+  const lore = getLoreForShow(show);
   const results: ReviewComment[] = [];
   const now = Date.now();
 
@@ -252,7 +287,7 @@ export async function generateLiveAIReviewWithGitHubModels(show: TVShow): Promis
   }
 
   // 如果未配置 GitHub Token，从本地高保真知识库提取并附带免密提示
-  const lore = SHOW_LORE_DATABASE[show.id];
+  const lore = getLoreForShow(show);
   const sampleHighlight = lore ? lore.sceneHighlights[0] : `深入拆解《${show.title}》的核心叙事机制`;
   const samplePraise = lore ? lore.praisePoints[0] : `视听语言与表演层次均达到了极高水准。`;
 

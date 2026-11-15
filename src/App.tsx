@@ -174,7 +174,7 @@ export function App() {
         return;
       }
 
-      const generated = await analyzeShowWithDeepSeek(nextTitle);
+      const generated = (await analyzeShowWithDeepSeek(nextTitle)) || generateOfflineFallbackShow(nextTitle);
       const newShow: TVShow = {
         id: `auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         title: generated.title || nextTitle,

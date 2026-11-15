@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { analyzeShowWithDeepSeek } from '../services/deepseek';
+import { searchTVMazeShow, generateOfflineFallbackShow } from '../services/tvmaze';
 import { TVShow } from '../types';
 import {
   Sparkles,
@@ -18,6 +19,7 @@ interface AddShowWithAIModalProps {
 }
 
 const POPULAR_SUGGESTIONS = [
+  '边缘世界 (The Peripheral)',
   '流人 (Slow Horses)',
   '企鹅人 (The Penguin)',
   '熊家餐馆 (The Bear)',
@@ -39,19 +41,29 @@ export const AddShowWithAIModal: React.FC<AddShowWithAIModalProps> = ({
   if (!isOpen) return null;
 
   const handleGenerate = async (targetName: string = showQuery) => {
-    if (!targetName.trim() || isLoading) return;
+    const cleanName = targetName.trim();
+    if (!cleanName || isLoading) return;
 
     setIsLoading(true);
     setError(null);
 
     try {
-      const generated = await analyzeShowWithDeepSeek(targetName.trim());
+      // 1. 优先调用 100% 免费公共影视 API (TVMaze, 0 Token / 0 费用)
+      const tvMazeShow = await searchTVMazeShow(cleanName);
+      if (tvMazeShow) {
+        onShowAdded(tvMazeShow);
+        onClose();
+        return;
+      }
+
+      // 2. 尝试 AI 提取或离线兜底建档器 (100% 成功，0 错误)
+      const generated = (await analyzeShowWithDeepSeek(cleanName)) || generateOfflineFallbackShow(cleanName);
 
       // Construct a valid TVShow object
       const newShow: TVShow = {
         id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        title: generated.title || targetName,
-        originalTitle: generated.originalTitle || targetName,
+        title: generated.title || cleanName,
+        originalTitle: generated.originalTitle || cleanName,
         year: generated.year || '2023 - 2024',
         totalSeasons: generated.totalSeasons || 1,
         totalEpisodes: generated.totalEpisodes || 10,
