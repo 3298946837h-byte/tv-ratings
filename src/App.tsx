@@ -8,6 +8,8 @@ import { ShowCard } from './components/ShowCard';
 import { ShowDetailModal } from './components/ShowDetailModal';
 import { CompareModal } from './components/CompareModal';
 import { ScheduleModal } from './components/ScheduleModal';
+import { DeepSeekAdvisorModal } from './components/DeepSeekAdvisorModal';
+import { AddShowWithAIModal } from './components/AddShowWithAIModal';
 import { Scale, Sparkles, Film } from 'lucide-react';
 
 export function App() {
@@ -16,6 +18,8 @@ export function App() {
   const [comparedShows, setComparedShows] = useState<TVShow[]>([]);
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [isAdvisorOpen, setIsAdvisorOpen] = useState(false);
+  const [isAddShowOpen, setIsAddShowOpen] = useState(false);
 
   const [filters, setFilters] = useState<FilterOptions>({
     searchQuery: '',
@@ -119,6 +123,8 @@ export function App() {
         compareCount={comparedShows.length}
         onOpenCompare={() => setIsCompareModalOpen(true)}
         onOpenSchedule={() => setIsScheduleModalOpen(true)}
+        onOpenAdvisor={() => setIsAdvisorOpen(true)}
+        onOpenAddShow={() => setIsAddShowOpen(true)}
         activeTag={filters.specialTag}
         onSelectTag={(tag) => setFilters({ ...filters, specialTag: tag })}
       />
@@ -246,6 +252,22 @@ export function App() {
               lastUpdated: new Date().toLocaleDateString() + ' 实时同步',
             }))
           );
+        }}
+      />
+
+      {/* DeepSeek AI Advisor Modal */}
+      <DeepSeekAdvisorModal
+        isOpen={isAdvisorOpen}
+        onClose={() => setIsAdvisorOpen(false)}
+      />
+
+      {/* Add Show with AI Modal */}
+      <AddShowWithAIModal
+        isOpen={isAddShowOpen}
+        onClose={() => setIsAddShowOpen(false)}
+        onShowAdded={(newShow) => {
+          setShows((prev) => [newShow, ...prev]);
+          setSelectedShow(newShow);
         }}
       />
 

@@ -4,11 +4,9 @@ import {
   Search,
   Scale,
   Clock,
-  Flame,
-  Award,
-  AlertTriangle,
-  XCircle,
-  TrendingUp,
+  Bot,
+  PlusCircle,
+  Sparkles,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -17,6 +15,8 @@ interface NavbarProps {
   compareCount: number;
   onOpenCompare: () => void;
   onOpenSchedule: () => void;
+  onOpenAdvisor: () => void;
+  onOpenAddShow: () => void;
   activeTag: string;
   onSelectTag: (tag: string) => void;
 }
@@ -27,6 +27,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   compareCount,
   onOpenCompare,
   onOpenSchedule,
+  onOpenAdvisor,
+  onOpenAddShow,
   activeTag,
   onSelectTag,
 }) => {
@@ -50,7 +52,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </div>
             <p className="text-[10px] text-slate-400 hidden sm:block">
-              IMDb · 烂番茄 · Metacritic · 豆瓣 · TMDb 多平台全网对齐
+              IMDb · 烂番茄 · Metacritic · 豆瓣 · TMDb · DeepSeek AI
             </p>
           </div>
         </div>
@@ -78,11 +80,31 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* DeepSeek AI Advisor Button */}
+          <button
+            onClick={onOpenAdvisor}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-600/90 to-indigo-600/90 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold shadow-md shadow-sky-600/25 transition-all cursor-pointer border border-sky-400/30"
+            title="打开 DeepSeek AI 剧荒避雷问答助手"
+          >
+            <Bot className="w-4 h-4 text-sky-200" />
+            <span className="hidden sm:inline">AI 避雷助手</span>
+          </button>
+
+          {/* Add Show with AI */}
+          <button
+            onClick={onOpenAddShow}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs text-slate-200 hover:text-white transition-all cursor-pointer"
+            title="使用 DeepSeek 实时收录新剧"
+          >
+            <PlusCircle className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden md:inline">AI 收录</span>
+          </button>
+
           {/* Scheduled Sync Button */}
           <button
             onClick={onOpenSchedule}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/90 text-xs text-slate-300 hover:text-white transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/90 text-xs text-slate-300 hover:text-white transition-all cursor-pointer"
             title="定时自动同步与数据更新中心"
           >
             <span className="relative flex h-2 w-2">
@@ -90,20 +112,20 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
             <Clock className="w-3.5 h-3.5 text-sky-400" />
-            <span className="hidden sm:inline">定时同步</span>
+            <span className="hidden lg:inline">定时同步</span>
           </button>
 
           {/* Compare Button */}
           <button
             onClick={onOpenCompare}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               compareCount > 0
                 ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/25 hover:bg-amber-400'
                 : 'bg-slate-900 border border-slate-700 text-slate-400 hover:text-slate-200'
             }`}
           >
             <Scale className="w-3.5 h-3.5" />
-            <span>剧集对比</span>
+            <span className="hidden sm:inline">对比</span>
             {compareCount > 0 && (
               <span className="w-4 h-4 rounded-full bg-slate-950 text-amber-300 text-[10px] flex items-center justify-center font-bold">
                 {compareCount}

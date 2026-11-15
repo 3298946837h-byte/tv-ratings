@@ -3,6 +3,7 @@ import { TVShow, ReviewComment } from '../types';
 import { PlatformRatingBar } from './PlatformRatingBar';
 import { RadarChart } from './RadarChart';
 import { EpisodeHeatmap } from './EpisodeHeatmap';
+import { chatWithDeepSeek } from '../services/deepseek';
 import {
   X,
   Sparkles,
@@ -13,9 +14,8 @@ import {
   Quote,
   MessageSquare,
   Scale,
-  Calendar,
-  Layers,
-  Tv,
+  Bot,
+  RefreshCw,
 } from 'lucide-react';
 
 interface ShowDetailModalProps {
@@ -32,6 +32,28 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
   isCompared,
 }) => {
   const [activeCommentTab, setActiveCommentTab] = useState<'all' | 'douban' | 'rotten_tomatoes' | 'imdb'>('all');
+  const [deepSeekAnalysis, setDeepSeekAnalysis] = useState<string | null>(null);
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+
+  const handleDeepSeekDiagnosis = async () => {
+    setIsDiagnosing(true);
+    try {
+      const prompt = `请对美剧《${show.title}》（英文名：${show.originalTitle}，当前全网综合评分 ${show.compositeScore}，IMDb ${show.ratings.imdb.score}分，烂番茄 ${show.ratings.rottenTomatoes.tomatometer}%，豆瓣 ${show.ratings.douban.score}分）做一份深度的实时口碑诊断报告。
+重点包含：
+1. 【全网风评定调与成败剖析】：它为什么能封神 / 为什么会两极分化或暴雷？
+2. 【烂尾与质量走势排查】：剧情各季走势如何？是否有高开低走或断崖崩盘的季/集？
+3. 【中西方审美分歧解读】：国内观众（豆瓣）和欧美主流观众（IMDb/烂番茄）对它的关注点有何异同？
+4. 【终极观影指南】：给想要入坑的观众一句最真诚的避坑/追剧建议。
+请用清晰的 Markdown 结构排版，语气专业且犀利。`;
+
+      const reply = await chatWithDeepSeek([{ role: 'user', content: prompt }]);
+      setDeepSeekAnalysis(reply);
+    } catch (err: any) {
+      setDeepSeekAnalysis(`❌ 诊断出错: ${err.message}`);
+    } finally {
+      setIsDiagnosing(false);
+    }
+  };
 
   const filteredComments = show.comments.filter((c) => {
     if (activeCommentTab === 'all') return true;
@@ -231,6 +253,40 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
                     <div className="font-bold text-amber-400 mb-1">⚠️ 建议避开人群：</div>
                     <div className="text-slate-300">{show.aiInsight.avoidFit}</div>
                   </div>
+                </div>
+
+                {/* DeepSeek Realtime Live Diagnosis Button & Panel */}
+                <div className="p-4 rounded-xl bg-gradient-to-r from-sky-950/40 via-indigo-950/30 to-slate-950 border border-sky-800/50 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center">
+                        <Bot className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-white">DeepSeek-Chat 实时全网口碑诊断</span>
+                        <span className="text-[10px] text-slate-400 block">针对全网争议、烂尾断崖及中外分歧进行大模型实时剖析</span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleDeepSeekDiagnosis}
+                      disabled={isDiagnosing}
+                      className={`text-xs px-3.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        isDiagnosing
+                          ? 'bg-slate-800 text-slate-400 cursor-not-allowed'
+                          : 'bg-sky-500 hover:bg-sky-400 text-slate-950 shadow-md shadow-sky-500/20'
+                      }`}
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isDiagnosing ? 'animate-spin' : ''}`} />
+                      {isDiagnosing ? 'DeepSeek 正在诊断...' : '点击启动 DeepSeek 实时深度评测'}
+                    </button>
+                  </div>
+
+                  {deepSeekAnalysis && (
+                    <div className="mt-3 p-3.5 rounded-lg bg-slate-950/90 border border-sky-700/50 text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-wrap animate-fadeIn font-normal">
+                      {deepSeekAnalysis}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
