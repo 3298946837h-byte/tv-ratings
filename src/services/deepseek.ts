@@ -3,7 +3,7 @@ export interface DeepSeekMessage {
   content: string;
 }
 
-export type AIProvider = 'auto' | 'github_models' | 'deepseek';
+export type AIProvider = 'auto' | 'gemini_flash' | 'github_models' | 'deepseek';
 
 // ----------------------------------------------------
 // 每日一角钱（¥0.10）与安全硬限额标准
@@ -124,6 +124,17 @@ export function setDeepSeekPaused(paused: boolean): void {
   localStorage.setItem('ratevibe_deepseek_paused', String(paused));
 }
 
+// 友好的朋友提醒文案
+export const QUOTA_EXHAUSTED_FRIEND_NOTICE = `📢 **【站长今日赞助额度已用完 · 提醒各位朋友】**
+
+站长为本站今日配置的 DeepSeek 专属赞助额度（**每日一角钱 ¥0.10 上限**）已全部用完啦！为了防止继续扣除站长的资金，系统已自动触发安全熔断保护。
+
+⚡ **请朋友们使用 Flash 极速免费模型（或免Key知识库）继续畅聊：**
+- 站长已为您打通了 **Flash 免费大模型**（Google Gemini Flash / GPT-4o-mini，100% 免费，0 费用无限畅聊）；
+- 点击右上角【AI 引擎与限额】，可直接选择 **⚡ Gemini Flash** 免费模式；
+- 您也可以直接提问关于《绝命毒师》《权力的游戏》《三体》《黑镜》等热门剧目，内置的权威专家库将继续为您秒级免费解答；
+- 站长每日一角钱的 DeepSeek 赞助额度将于明日 00:00 自动满血刷新！`;
+
 // ----------------------------------------------------
 // 检查当前是否允许发起 DeepSeek 远程扣费调用（熔断 + 冷却）
 // ----------------------------------------------------
@@ -139,14 +150,14 @@ export function checkCanCallDeepSeek(): { allowed: boolean; reason?: string } {
   if (usage.estimatedCostCNY >= DAILY_BUDGET_CAP_CNY) {
     return {
       allowed: false,
-      reason: `🛑 【一角钱硬熔断已触发】今日已累计消耗 ¥${usage.estimatedCostCNY.toFixed(3)}（已达每日一角钱 ¥0.10 上限），已物理切断 API 连接以绝对保护您的钱包！明日 00:00 自动恢复。`,
+      reason: QUOTA_EXHAUSTED_FRIEND_NOTICE,
     };
   }
 
   if (usage.callCount >= DAILY_MAX_CALLS) {
     return {
       allowed: false,
-      reason: `🛑 【单日调用频次熔断】今日已调用 ${usage.callCount} 次（已达单日 50 次安全上限），已自动切断远程连接保护资金！`,
+      reason: QUOTA_EXHAUSTED_FRIEND_NOTICE,
     };
   }
 
@@ -169,6 +180,7 @@ const DEFAULT_DEEPSEEK_KEY = import.meta.env.VITE_DEEPSEEK_API_KEY || USER_PRESE
 const DEEPSEEK_BASE_URL = import.meta.env.VITE_DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
 const DEFAULT_GITHUB_TOKEN = import.meta.env.VITE_GITHUB_TOKEN || '';
 const GITHUB_MODELS_BASE_URL = 'https://models.inference.ai.azure.com';
+const DEFAULT_GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 export function maskApiKey(key: string): string {
   if (!key || key.length < 10) return '未配置 Key';
@@ -181,10 +193,9 @@ export function maskApiKey(key: string): string {
 
 export function getAIProvider(): AIProvider {
   const saved = localStorage.getItem('ratevibe_ai_provider');
-  if (saved === 'github_models' || saved === 'deepseek' || saved === 'auto') {
+  if (saved === 'gemini_flash' || saved === 'github_models' || saved === 'deepseek' || saved === 'auto') {
     return saved;
   }
-  // 默认使用智能双引擎 (优先缓存/知识库，其次 DeepSeek 官方一角钱熔断通道)
   return 'auto';
 }
 
@@ -199,6 +210,15 @@ export function getDeepSeekApiKey(): string {
 
 export function setDeepSeekApiKey(key: string): void {
   localStorage.setItem('ratevibe_deepseek_api_key', key);
+}
+
+export function getGeminiApiKey(): string {
+  const custom = localStorage.getItem('ratevibe_gemini_api_key');
+  return custom || DEFAULT_GEMINI_KEY;
+}
+
+export function setGeminiApiKey(key: string): void {
+  localStorage.setItem('ratevibe_gemini_api_key', key);
 }
 
 export function getGitHubToken(): string {
@@ -221,6 +241,7 @@ export function setGitHubModel(model: string): void {
 export function isUsingCustomKey(): boolean {
   return (
     Boolean(localStorage.getItem('ratevibe_deepseek_api_key')) ||
+    Boolean(localStorage.getItem('ratevibe_gemini_api_key')) ||
     Boolean(localStorage.getItem('ratevibe_github_token'))
   );
 }
@@ -291,6 +312,52 @@ function matchOfflineKnowledge(query: string): string | null {
 }
 
 // ----------------------------------------------------
+// Google Gemini Flash 极速免费模型调用 (100% 免费 · 0 费用)
+// ----------------------------------------------------
+export async function callGeminiFlash(messages: DeepSeekMessage[]): Promise<string> {
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) {
+    throw new Error(
+      '未配置 Gemini Flash 免费 Key。可在 aistudio.google.com 免费领取 100% 永久免费的 Gemini 1.5/2.0 Flash Key（无任何费用，每天 1500 次免费配额）！'
+    );
+  }
+
+  const contents = messages
+    .filter((m) => m.role !== 'system')
+    .map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }));
+
+  const systemInstructionText =
+    messages.find((m) => m.role === 'system')?.content ||
+    '你是美剧与电影权威评分口碑专家。根据IMDb、烂番茄、Metacritic、豆瓣及TMDb数据，聚焦神作看点、烂尾暴跌预警与中外审美差异。语气精炼犀利，字数严格控制在300字内。';
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents,
+      systemInstruction: { parts: [{ text: systemInstructionText }] },
+      generationConfig: {
+        temperature: 0.5,
+        maxOutputTokens: 500,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini Flash 调用失败 (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+// ----------------------------------------------------
 // GitHub Models 免费接口调用
 // ----------------------------------------------------
 export async function callGitHubModels(
@@ -337,13 +404,14 @@ export async function callGitHubModels(
 // ----------------------------------------------------
 // 执行受严格熔断与单次截断保护的 DeepSeek 官方请求
 // ----------------------------------------------------
-async function executeGuardedDeepSeekCall(messages: DeepSeekMessage[]): Promise<{ reply: string; engineUsed: string }> {
+async function executeGuardedDeepSeekCall(messages: DeepSeekMessage[]): Promise<{ reply: string; engineUsed: string; circuitBroken?: boolean }> {
   // 1. 硬熔断与冷却预检
   const check = checkCanCallDeepSeek();
   if (!check.allowed) {
     return {
       reply: check.reason || '已触发保护阻断。',
-      engineUsed: '🛡️ 一角钱安全熔断器 (已保护资金)',
+      engineUsed: '📢 站长一角钱赞助已用完 (提醒切换 Flash 免费模型)',
+      circuitBroken: true,
     };
   }
 
@@ -417,7 +485,22 @@ export async function chatWithAI(messages: DeepSeekMessage[]): Promise<{ reply: 
 
   const provider = getAIProvider();
 
-  // 3. 如果显式选择 GitHub Models 或配置了 Token 且处于 auto 模式，调用 GitHub Models 免费配额
+  // 3. 显式选择 Gemini Flash 极速免费模型
+  if (provider === 'gemini_flash') {
+    try {
+      const reply = await callGeminiFlash(messages);
+      setCachedText(cacheKey, reply);
+      return { reply, engineUsed: '⚡ Gemini Flash 极速免费模型 (0费用)' };
+    } catch (e: any) {
+      console.warn('Gemini Flash error:', e);
+      return {
+        reply: `⚠️ Gemini Flash 响应提示: ${e.message}`,
+        engineUsed: 'Gemini Flash',
+      };
+    }
+  }
+
+  // 4. 显式选择 GitHub Models (GPT-4o-mini 等) 免费配额
   if (provider === 'github_models') {
     const ghToken = getGitHubToken();
     if (ghToken) {
@@ -435,12 +518,43 @@ export async function chatWithAI(messages: DeepSeekMessage[]): Promise<{ reply: 
     }
   }
 
-  // 4. 调用经过一角钱硬熔断保护的 DeepSeek 官方通道
+  // 5. 调用经过一角钱硬熔断保护的 DeepSeek 官方通道
   try {
     const res = await executeGuardedDeepSeekCall(messages);
-    if (!res.engineUsed.includes('一角钱安全熔断器')) {
-      setCachedText(cacheKey, res.reply);
+
+    // 如果熔断触发，且用户配置了 Flash 或 GitHub Models，自动无缝降级调用 Flash 为朋友解答！
+    if (res.circuitBroken) {
+      const geminiKey = getGeminiApiKey();
+      if (geminiKey) {
+        try {
+          const flashReply = await callGeminiFlash(messages);
+          const combined = `> 📢 **【站长一角钱 DeepSeek 额度已达今日上限】** 已自动为朋友们无缝切换至 **⚡ Gemini Flash 免费模型** 继续回答（0 费用）：\n\n${flashReply}`;
+          setCachedText(cacheKey, combined);
+          return {
+            reply: combined,
+            engineUsed: '⚡ Gemini Flash 免费降级接力 (0费用)',
+          };
+        } catch (e) {}
+      }
+
+      const ghToken = getGitHubToken();
+      if (ghToken) {
+        try {
+          const ghReply = await callGitHubModels(messages, false);
+          const combined = `> 📢 **【站长一角钱 DeepSeek 额度已达今日上限】** 已自动为朋友们无缝切换至 **Flash 免费模型 (GPT-4o-mini)** 继续回答（0 费用）：\n\n${ghReply}`;
+          setCachedText(cacheKey, combined);
+          return {
+            reply: combined,
+            engineUsed: '⚡ Flash 免费降级接力 (0费用)',
+          };
+        } catch (e) {}
+      }
+
+      // 未配置免费 Key 时，直接输出友好的提醒朋友文案
+      return res;
     }
+
+    setCachedText(cacheKey, res.reply);
     return res;
   } catch (err: any) {
     return {
@@ -483,8 +597,10 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
 
   try {
     lastCallTimestamp = Date.now();
-    const prompt = `请分析影视作品《${cleanName}》，严格返回合法的 JSON 格式（不要有任何额外文字）：
+    const prompt = `请分析影视作品《${cleanName}》。
+如果该作品确实存在（已上映或已有明确制作信息），请严格返回合法 JSON：
 {
+  "notFound": false,
   "title": "${cleanName}",
   "originalTitle": "官方原名或英文名",
   "year": "上映年份",
@@ -492,8 +608,8 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
   "totalEpisodes": 1,
   "status": "Ended",
   "genres": ["真实类型1", "真实类型2"],
-  "network": "真实出品方或发行方（电影写制片厂/出品公司，电视剧写播出平台，绝不可瞎编）",
-  "summary": "真实准确剧情梗概，写出真实导演与主演，绝不可胡编乱造",
+  "network": "真实出品方或发行方（电影写真实制片厂/公司，电视剧写真实播出平台，严禁瞎编）",
+  "summary": "真实准确剧情梗概，写出真实导演与主演",
   "compositeScore": 8.0,
   "verdictTier": "must_watch",
   "tagline": "一句话真实定位",
@@ -501,6 +617,11 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
   "hasCulturalDivergence": false,
   "isTrap": false,
   "badges": ["DeepSeek 智能识别"]
+}
+如果该影视作品不存在、未上映、查无实据或信息不足，绝不可编造任何虚假评分和平台，请严格返回：
+{
+  "notFound": true,
+  "reason": "查无实据或未公映"
 }`;
 
     const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
@@ -512,7 +633,7 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
       body: JSON.stringify({
         model: 'deepseek-chat',
         messages: [
-          { role: 'system', content: '你是严肃权威的全球影视资料专家，实事求是，绝不胡编乱造。输出合法纯 JSON。' },
+          { role: 'system', content: '你是严肃权威的全球影视资料专家，实事求是，绝不胡编乱造。如果查无此片，必须返回 notFound: true。输出合法纯 JSON。' },
           { role: 'user', content: prompt },
         ],
         temperature: 0.1,
@@ -529,6 +650,9 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
 
       const content = data.choices?.[0]?.message?.content || '{}';
       const parsed = JSON.parse(content);
+      if (parsed.notFound || parsed['作品名称']?.includes('查无此片') || parsed['状态']?.includes('查无此片')) {
+        return null;
+      }
       setCachedText(cacheKey, JSON.stringify(parsed));
       return parsed;
     }

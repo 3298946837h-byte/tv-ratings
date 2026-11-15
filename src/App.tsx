@@ -12,7 +12,7 @@ import { DeepSeekAdvisorModal } from './components/DeepSeekAdvisorModal';
 import { AddShowWithAIModal } from './components/AddShowWithAIModal';
 import { ShareModal } from './components/ShareModal';
 import { analyzeShowWithDeepSeek } from './services/deepseek';
-import { searchTVMazeShow, generateOfflineFallbackShow } from './services/tvmaze';
+import { searchTVMazeShow } from './services/tvmaze';
 import {
   searchAndBuildShowWithTMDB,
   discoverInfiniteShows,
@@ -83,9 +83,20 @@ export function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         const existingIds = new Set(SHOWS_DATA.map((s) => s.id));
-        // 清理旧版本胡编乱造的 offline- 假数据（如乱编的 HBO 龙餐馆）
-        const additional = parsed.filter((s: TVShow) => !existingIds.has(s.id) && !s.id.startsWith('offline-') && !s.title.includes('龙餐馆'));
-        return [...SHOWS_DATA, ...additional];
+        // 彻底清理所有旧版本胡编乱造的假数据（如乱编的 HBO 龙餐馆、免Token建档卡片）
+        const additional = parsed.filter(
+          (s: TVShow) =>
+            !existingIds.has(s.id) &&
+            !s.id.startsWith('offline-') &&
+            !s.title.includes('龙餐馆') &&
+            !(s.tagline && s.tagline.includes('免Token建档')) &&
+            !(s.network === 'HBO / Max' && s.title.includes('龙餐馆'))
+        );
+        const cleaned = [...SHOWS_DATA, ...additional];
+        try {
+          localStorage.setItem('ratevibe_cached_shows', JSON.stringify(cleaned));
+        } catch (e) {}
+        return cleaned;
       }
     } catch (e) {
       console.error(e);
@@ -127,6 +138,18 @@ export function App() {
   const featuredShow = useMemo(() => {
     return shows.find((s) => s.id === 'breaking-bad') || shows[0];
   }, [shows]);
+
+  // 自动拦截与清理被淘汰的假卡片弹窗
+  useEffect(() => {
+    if (
+      selectedShow &&
+      (selectedShow.title.includes('龙餐馆') ||
+        selectedShow.id.startsWith('offline-') ||
+        (selectedShow.tagline && selectedShow.tagline.includes('免Token建档')))
+    ) {
+      setSelectedShow(null);
+    }
+  }, [selectedShow]);
 
   // Persist show and select it
   const handleAddShow = (newShow: TVShow) => {
@@ -487,12 +510,12 @@ export function App() {
         return;
       }
 
-      // 3. 既未在公共欧美剧库查到，也未开启 AI：实事求是，绝不胡编乱造！
-      setStreamToast(`🔍 公开欧美影视库未检索到《${query}》。该作品可能是电影或国产作品（如沈腾《欢迎来到龙餐馆》）；若需跨语种识别，可配置 DeepSeek API！`);
+      // 3. 既未在公共影视库查到，也未开启 AI：实事求是，绝不胡编乱造！
+      setStreamToast(`🔍 权威影视库（TMDb/OMDb/TVMaze）未检索到《${query}》。本站严守数据真实底线，绝不瞎编乱造任何虚假评分与播出平台。请检查片名拼写，或输入官方英文原名。`);
       setTimeout(() => setStreamToast(null), 6000);
     } catch (err: any) {
       console.warn('Search fallback:', err);
-      setStreamToast(`🔍 未在公开欧美影视库中找到《${query}》，建议核对片名或尝试原英文名。`);
+      setStreamToast(`🔍 未在各大权威影视库中找到《${query}》，建议核对片名或尝试输入官方原名。`);
       setTimeout(() => setStreamToast(null), 4000);
     } finally {
       setIsSearchingWeb(false);

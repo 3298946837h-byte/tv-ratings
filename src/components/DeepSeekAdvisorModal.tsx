@@ -3,6 +3,8 @@ import {
   chatWithAI,
   getDeepSeekApiKey,
   setDeepSeekApiKey,
+  getGeminiApiKey,
+  setGeminiApiKey,
   getGitHubToken,
   setGitHubToken,
   getAIProvider,
@@ -39,6 +41,7 @@ import {
   EyeOff,
   PauseCircle,
   PlayCircle,
+  Zap,
 } from 'lucide-react';
 
 interface DeepSeekAdvisorModalProps {
@@ -73,6 +76,7 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
   const [showKeyConfig, setShowKeyConfig] = useState(false);
   const [provider, setProviderState] = useState<AIProvider>(getAIProvider());
   const [customDeepSeekKey, setCustomDeepSeekKey] = useState(getDeepSeekApiKey());
+  const [customGeminiKey, setCustomGeminiKey] = useState(getGeminiApiKey());
   const [customGitHubToken, setCustomGitHubToken] = useState(getGitHubToken());
   const [githubModel, setGitHubModelState] = useState(getGitHubModel());
   const [keySaved, setKeySaved] = useState(false);
@@ -125,6 +129,7 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
   const handleSaveConfig = () => {
     setAIProvider(provider);
     setDeepSeekApiKey(customDeepSeekKey.trim());
+    setGeminiApiKey(customGeminiKey.trim());
     setGitHubToken(customGitHubToken.trim());
     setGitHubModel(githubModel);
     setKeySaved(true);
@@ -182,6 +187,35 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
           </div>
         </div>
 
+        {/* 站长赞助与朋友提醒横幅 */}
+        <div className="px-3.5 sm:px-4 py-2 bg-gradient-to-r from-amber-950/80 via-slate-900 to-sky-950/80 border-b border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-amber-400 font-bold flex items-center gap-1">
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              站长友情赞助提醒:
+            </span>
+            <span className="text-slate-200">
+              站长每日赞助 <strong className="text-amber-300">¥0.10（一角钱）</strong> DeepSeek 额度，用完后请朋友们切换使用 <strong className="text-sky-300 font-bold">⚡ Flash 免费模型</strong>（100% 免费无限畅聊）！
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setProviderState('gemini_flash');
+              setAIProvider('gemini_flash');
+              setActiveEngineTag('⚡ Gemini Flash 免费');
+            }}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-colors border whitespace-nowrap self-end sm:self-center ${
+              provider === 'gemini_flash'
+                ? 'bg-sky-500 text-slate-950 border-sky-400'
+                : 'bg-sky-950/80 text-sky-300 border-sky-500/40 hover:bg-sky-900/80'
+            }`}
+          >
+            ⚡ 一键使用 Flash 免费模型
+          </button>
+        </div>
+
         {/* 一角钱每日硬熔断监控栏 (Daily Budget & Circuit Breaker Monitor) */}
         <div className="px-3.5 sm:px-4 py-2.5 bg-slate-950/95 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
           <div className="flex items-center gap-2 flex-wrap">
@@ -197,7 +231,7 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
             </span>
             {dailyUsage.isCircuitBroken ? (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-950 text-red-300 border border-red-800 font-bold flex items-center gap-1 animate-pulse">
-                🛑 一角钱硬熔断已生效 (已自动切断保护钱包)
+                🛑 站长今日一角钱额度已用完！请朋友们切换使用 Flash 免费模型继续畅聊（0成本）
               </span>
             ) : isPaused ? (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
@@ -256,45 +290,91 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
             </div>
 
             {/* Provider Switcher */}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <button
                 type="button"
                 onClick={() => setProviderState('auto')}
-                className={`py-2 px-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                className={`py-2 px-2 rounded-xl border text-center transition-all cursor-pointer ${
                   provider === 'auto'
                     ? 'bg-sky-500/20 border-sky-400 text-sky-200 font-bold'
                     : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <div className="font-bold">智能双引擎 (推荐)</div>
-                <div className="text-[10px] text-slate-400 scale-95">优先 GitHub 免费，备用 DeepSeek</div>
+                <div className="font-bold text-[11px]">智能双引擎 (推荐)</div>
+                <div className="text-[9px] text-slate-400 scale-95">优先 Flash 免费，备用一角钱</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setProviderState('gemini_flash')}
+                className={`py-2 px-2 rounded-xl border text-center transition-all cursor-pointer ${
+                  provider === 'gemini_flash'
+                    ? 'bg-amber-500/20 border-amber-400 text-amber-200 font-bold'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <div className="font-bold text-[11px] flex items-center justify-center gap-0.5">
+                  <Zap className="w-3 h-3 text-amber-400" /> Flash 免费模型
+                </div>
+                <div className="text-[9px] text-amber-400 scale-95">推荐朋友用 · 每日1500次</div>
               </button>
 
               <button
                 type="button"
                 onClick={() => setProviderState('github_models')}
-                className={`py-2 px-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                className={`py-2 px-2 rounded-xl border text-center transition-all cursor-pointer ${
                   provider === 'github_models'
                     ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200 font-bold'
                     : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <div className="font-bold">GitHub Models</div>
-                <div className="text-[10px] text-emerald-400 scale-95">100% 免费配额 (0 成本)</div>
+                <div className="font-bold text-[11px]">GitHub Models</div>
+                <div className="text-[9px] text-emerald-400 scale-95">免费配额 (GPT-4o mini)</div>
               </button>
 
               <button
                 type="button"
                 onClick={() => setProviderState('deepseek')}
-                className={`py-2 px-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                className={`py-2 px-2 rounded-xl border text-center transition-all cursor-pointer ${
                   provider === 'deepseek'
                     ? 'bg-indigo-500/20 border-indigo-400 text-indigo-200 font-bold'
                     : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <div className="font-bold">DeepSeek-V3</div>
-                <div className="text-[10px] text-slate-400 scale-95">官方极速智能模型</div>
+                <div className="font-bold text-[11px]">DeepSeek-V3</div>
+                <div className="text-[9px] text-slate-400 scale-95">站长一角钱硬熔断</div>
               </button>
+            </div>
+
+            {/* 1. Gemini Flash Config */}
+            <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                  Google Gemini 1.5/2.0 Flash 免费 Key (推荐朋友使用)
+                </span>
+                <span className="text-[10px] text-amber-400 font-bold">100% 永久免费 · 每天 1500 次配额</span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={customGeminiKey}
+                  onChange={(e) => setCustomGeminiKey(e.target.value)}
+                  placeholder="AIzaSy... (Google AI Studio 免费 Key)"
+                  className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-sky-500"
+                />
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-[11px] rounded-lg transition-colors whitespace-nowrap flex items-center border border-slate-700 font-bold"
+                >
+                  免费领取 Key ↗
+                </a>
+              </div>
+              <p className="text-[10px] text-slate-400">
+                💡 <strong>给朋友的提示</strong>：站长的一角钱 DeepSeek 额度用完后，大家可以在 Google AI Studio 免费生成 Flash Key，每天享有高达 1500 次极速调用，完全 0 费用！
+              </p>
             </div>
 
             {/* GitHub Token Config */}
