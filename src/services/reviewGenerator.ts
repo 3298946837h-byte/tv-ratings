@@ -515,27 +515,42 @@ export function getEndlessReviews(
   
   // 生成多批次评论候选池 (覆盖多页)
   const syntheticReviews: ReviewComment[] = [];
-  const maxToGenerate = Math.min(200, Math.max(80, page * pageSize + 30));
+  const maxToGenerate = Math.max(120, page * pageSize + 60);
+
+  // 针对特定平台筛选做适配，确保每个标签页下都有充沛的专属影评
+  const availablePersonas = sourceFilter !== 'all'
+    ? (CRITIC_PERSONAS.filter(p => p.source === sourceFilter).length > 0
+        ? CRITIC_PERSONAS.filter(p => p.source === sourceFilter)
+        : CRITIC_PERSONAS)
+    : CRITIC_PERSONAS;
 
   for (let i = 0; i < maxToGenerate; i++) {
-    const rng = seededRandom(seedBase + i * 37);
-    const persona = CRITIC_PERSONAS[Math.floor(rng() * CRITIC_PERSONAS.length)];
+    const rng = seededRandom(seedBase + i * 137 + page * 19);
+    const persona = availablePersonas[i % availablePersonas.length];
     
     // 决定观点倾向
     let sentiment: 'positive' | 'negative' | 'mixed' = 'positive';
-    const sentimentRoll = rng();
-    if (show.isTrap || show.hasEndingCollapse) {
-      if (sentimentRoll < 0.5) sentiment = 'negative';
-      else if (sentimentRoll < 0.8) sentiment = 'mixed';
-      else sentiment = 'positive';
-    } else if (show.compositeScore >= 9.0) {
-      if (sentimentRoll < 0.75) sentiment = 'positive';
-      else if (sentimentRoll < 0.92) sentiment = 'mixed';
-      else sentiment = 'negative';
+    if (sentimentFilter === 'positive') {
+      sentiment = 'positive';
+    } else if (sentimentFilter === 'negative') {
+      sentiment = 'negative';
+    } else if (sentimentFilter === 'mixed' || sentimentFilter === 'analysis') {
+      sentiment = 'mixed';
     } else {
-      if (sentimentRoll < 0.55) sentiment = 'positive';
-      else if (sentimentRoll < 0.85) sentiment = 'mixed';
-      else sentiment = 'negative';
+      const sentimentRoll = rng();
+      if (show.isTrap || show.hasEndingCollapse) {
+        if (sentimentRoll < 0.5) sentiment = 'negative';
+        else if (sentimentRoll < 0.8) sentiment = 'mixed';
+        else sentiment = 'positive';
+      } else if (show.compositeScore >= 9.0) {
+        if (sentimentRoll < 0.75) sentiment = 'positive';
+        else if (sentimentRoll < 0.92) sentiment = 'mixed';
+        else sentiment = 'negative';
+      } else {
+        if (sentimentRoll < 0.55) sentiment = 'positive';
+        else if (sentimentRoll < 0.85) sentiment = 'mixed';
+        else sentiment = 'negative';
+      }
     }
 
     // 挑选长评或短评
