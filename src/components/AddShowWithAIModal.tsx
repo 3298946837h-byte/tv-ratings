@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { analyzeShowWithDeepSeek } from '../services/deepseek';
 import { searchTVMazeShow, generateOfflineFallbackShow } from '../services/tvmaze';
+import { searchAndBuildShowWithTMDB } from '../services/tmdbOmdbService';
 import { TVShow } from '../types';
 import {
   Sparkles,
@@ -48,7 +49,15 @@ export const AddShowWithAIModal: React.FC<AddShowWithAIModalProps> = ({
     setError(null);
 
     try {
-      // 1. 优先调用 100% 免费公共影视 API (TVMaze, 0 Token / 0 费用)
+      // 1. 优先调用 TMDb + OMDb 权威真实通道 (百万电影/剧集真实收录)
+      const tmdbShow = await searchAndBuildShowWithTMDB(cleanName);
+      if (tmdbShow) {
+        onShowAdded(tmdbShow);
+        onClose();
+        return;
+      }
+
+      // 2. 备用公共欧美剧集 API (TVMaze, 0 Token / 0 费用)
       const tvMazeShow = await searchTVMazeShow(cleanName);
       if (tvMazeShow) {
         onShowAdded(tvMazeShow);
@@ -56,7 +65,7 @@ export const AddShowWithAIModal: React.FC<AddShowWithAIModalProps> = ({
         return;
       }
 
-      // 2. 尝试 AI 提取或离线兜底建档器 (100% 成功，0 错误)
+      // 3. 尝试 AI 提取或离线兜底建档器
       const generated = (await analyzeShowWithDeepSeek(cleanName)) || generateOfflineFallbackShow(cleanName);
 
       // Construct a valid TVShow object

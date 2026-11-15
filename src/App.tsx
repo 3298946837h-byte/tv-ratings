@@ -13,6 +13,7 @@ import { AddShowWithAIModal } from './components/AddShowWithAIModal';
 import { ShareModal } from './components/ShareModal';
 import { analyzeShowWithDeepSeek } from './services/deepseek';
 import { searchTVMazeShow, generateOfflineFallbackShow } from './services/tvmaze';
+import { searchAndBuildShowWithTMDB } from './services/tmdbOmdbService';
 import {
   Scale,
   Sparkles,
@@ -364,7 +365,17 @@ export function App() {
     setSearchProgress(`正在并发调用各大平台（IMDb, 烂番茄, Metacritic, 豆瓣, TMDb）实时检索《${query}》...`);
 
     try {
-      // 1. 优先调用 100% 免费公共影视 API (TVMaze, 0 Token / 0 费用)
+      // 1. 优先调用 TMDb + OMDb 权威多源通道 (100万+全量电影/剧集片库 + IMDb真实百万级票数 + 烂番茄/Metacritic实据)
+      const tmdbShow = await searchAndBuildShowWithTMDB(query);
+      if (tmdbShow) {
+        handleAddShow(tmdbShow);
+        setStreamToast(`✨ 已通过 TMDb + OMDb 权威多源通道收录：《${tmdbShow.title}》！`);
+        setFilters((f) => ({ ...f, searchQuery: '' }));
+        setTimeout(() => setStreamToast(null), 4000);
+        return;
+      }
+
+      // 2. 备用免费公共欧美剧集 API (TVMaze, 0 Token / 0 费用)
       const tvMazeShow = await searchTVMazeShow(query);
       if (tvMazeShow) {
         handleAddShow(tvMazeShow);
@@ -374,7 +385,7 @@ export function App() {
         return;
       }
 
-      // 2. 尝试调用配置好的 AI (DeepSeek 或 GitHub Models) 进行真实跨界分析
+      // 3. 尝试调用配置好的 AI (DeepSeek 或 GitHub Models) 进行真实跨界分析
       const aiShow = await analyzeShowWithDeepSeek(query);
       if (aiShow && aiShow.title) {
         const isMovie = (aiShow.totalEpisodes === 1 && aiShow.totalSeasons === 1) || aiShow.genres?.includes('电影');
