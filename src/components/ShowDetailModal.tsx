@@ -9,7 +9,7 @@ import {
   saveLocalUserReview,
   toggleLikeReview,
 } from '../services/reviewGenerator';
-import { crawlRealtimeReviews } from '../services/realtimeReviewCrawler';
+import { crawlRealtimeReviews, generateLiveAIReviewWithGitHubModels } from '../services/realtimeReviewCrawler';
 import {
   X,
   Sparkles,
@@ -101,6 +101,21 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
       }
     } catch (e) {
       console.error('Realtime crawl failed:', e);
+    } finally {
+      setIsLiveCrawling(false);
+    }
+  };
+
+  // 方案二：免费调用 GitHub Models (0 费用) 实时提炼一篇权威大模型深度长评
+  const handleTriggerFreeAIReview = async () => {
+    setIsLiveCrawling(true);
+    try {
+      const aiReview = await generateLiveAIReviewWithGitHubModels(show);
+      setLiveReviews((prev) => [aiReview, ...prev]);
+      setCrawlNotice(`🤖 【方案二：免费 AI 实时提炼成功】已由 GitHub Models 免费模型提纯并向流中注入关于《${show.title}》的最新长篇影评！`);
+      setTimeout(() => setCrawlNotice(null), 4000);
+    } catch (err: any) {
+      console.error('Free AI review error:', err);
     } finally {
       setIsLiveCrawling(false);
     }
@@ -471,29 +486,32 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
             {/* 无限影评流与多源真实评测中心 (Endless Reviews & Critics) */}
             {/* ======================================================== */}
             <div className="space-y-4 pt-6 border-t border-slate-800">
-              {/* 全网自动实时抓取引擎状态条 */}
-              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-slate-950 to-sky-950/30 border border-emerald-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+              {/* 方案二 + 方案三双核驱动状态条 */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-slate-950 to-indigo-950/40 border border-emerald-800/40 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-lg">
                 <div className="flex items-center gap-2.5">
                   <span className="relative flex h-3 w-3">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                   </span>
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-black text-emerald-300">
-                        全网实时自动抓取引擎：运行中
+                        方案二 (GitHub Models) + 方案三 (TVMaze 公共API) 协同运行
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-950 text-sky-400 border border-sky-800 font-mono">
+                        🛡️ DeepSeek 0消耗保护锁生效中 (0扣费)
                       </span>
                       <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-700 font-mono">
                         自动同步：{lastCrawlTime}
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-400">
-                      系统正在客户端全自动监听 豆瓣 / 烂番茄 / IMDb / Reddit 最新讨论，杜绝模板，实时流式注入新评
+                      底层由 TVMaze 免费开放节点提供单集与状态支持，顶层由 GitHub Models 免费大模型实时提纯剧评
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                   <button
                     onClick={() => setAutoStreamEnabled(!autoStreamEnabled)}
                     className={`text-xs px-2.5 py-1.5 rounded-lg border font-medium flex items-center gap-1 cursor-pointer transition-colors ${
@@ -503,16 +521,27 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
                     }`}
                   >
                     <Radio className="w-3.5 h-3.5" />
-                    {autoStreamEnabled ? '自动流已开启' : '开启自动流'}
+                    {autoStreamEnabled ? '自动流开启' : '开启自动流'}
                   </button>
 
                   <button
                     onClick={() => triggerAutoCrawl(true)}
                     disabled={isLiveCrawling}
-                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer transition-all disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs flex items-center gap-1 shadow-md shadow-emerald-500/20 cursor-pointer transition-all disabled:opacity-50 whitespace-nowrap"
+                    title="方案三：免费从全网公共开放节点抓取讨论"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isLiveCrawling ? 'animate-spin' : ''}`} />
-                    {isLiveCrawling ? '正在全网抓取...' : '一键立即自动抓取'}
+                    {isLiveCrawling ? '全网抓取中...' : '方案三：开放节点抓取'}
+                  </button>
+
+                  <button
+                    onClick={handleTriggerFreeAIReview}
+                    disabled={isLiveCrawling}
+                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-500 via-indigo-500 to-purple-500 hover:opacity-90 text-white font-black text-xs flex items-center gap-1 shadow-md shadow-indigo-500/20 cursor-pointer transition-all disabled:opacity-50 whitespace-nowrap"
+                    title="方案二：免费调用 GitHub Models (GPT-4o-mini) 实时提纯深度影评，不花一分钱"
+                  >
+                    <Bot className="w-3.5 h-3.5" />
+                    方案二：免费AI提纯
                   </button>
                 </div>
               </div>

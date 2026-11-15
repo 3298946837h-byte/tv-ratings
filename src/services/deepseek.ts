@@ -148,7 +148,7 @@ function matchOfflineKnowledge(query: string): string | null {
 // Provider Core Invocation Logic
 // ----------------------------------------------------
 
-async function callGitHubModels(
+export async function callGitHubModels(
   messages: DeepSeekMessage[],
   jsonMode: boolean = false
 ): Promise<string> {

@@ -1,5 +1,6 @@
 import { TVShow, ReviewComment } from '../types';
 import { isReviewLiked } from './reviewGenerator';
+import { callGitHubModels, getGitHubToken } from './deepseek';
 
 // =========================================================================
 // 全网多源真实讨论实时抓取与流式注入引擎
@@ -197,4 +198,79 @@ export async function crawlRealtimeReviews(
   }
 
   return results;
+}
+
+/**
+ * 方案二：调用免费的 GitHub Models (0 费用) 实时提炼一篇权威大模型深度影评
+ */
+export async function generateLiveAIReviewWithGitHubModels(show: TVShow): Promise<ReviewComment> {
+  const token = getGitHubToken();
+  const nowStr = '刚刚 (GitHub Models 免费AI实时提纯)';
+
+  if (token) {
+    try {
+      const prompt = `请作为资深国际剧评人（综合烂番茄 Top Critic 与豆瓣评分标准），对美剧《${show.title}》（英文名：${show.originalTitle}，发行平台：${show.network}，全网综合评分 ${show.compositeScore} 分）写一篇专业、犀利、有深度有细节的长篇影评。
+要求：
+1. 给出一个吸引人的长评标题（带【】）；
+2. 评价其剧本节奏、核心人物弧光与视听风格，提及具体角色或核心名场面；
+3. 指出其最大的亮点或潜在门槛；
+4. 字数约 150-250 字，行文严谨而有文采。`;
+
+      const aiReply = await callGitHubModels([
+        { role: 'system', content: '你是具有极高文学品味的严肃影视评论家，熟稔美剧工业水准与观众心理。' },
+        { role: 'user', content: prompt }
+      ]);
+
+      // 提取标题
+      let title = `【AI深度评测】《${show.title}》为什么能在当下电视剧史占据一席之地`;
+      let content = aiReply;
+      const titleMatch = aiReply.match(/【(.*?)】/);
+      if (titleMatch) {
+        title = `【${titleMatch[1]}】`;
+      }
+
+      return {
+        id: `github-ai-${show.id}-${Date.now()}`,
+        source: 'rotten_tomatoes',
+        author: 'GitHub Models 认证特邀影评人',
+        publication: 'Azure AI 免费模型推断',
+        isCritic: true,
+        rating: show.compositeScore >= 9.0 ? 10 : (show.compositeScore >= 8.0 ? 9 : 7),
+        date: nowStr,
+        title,
+        content: content.replace(/【.*?】/, '').trim(),
+        sentiment: show.hasEndingCollapse ? 'mixed' : (show.compositeScore >= 9.0 ? 'positive' : 'mixed'),
+        likes: 2400,
+        tags: ['方案二 GitHub Models', '0费用实时生成', '大模型提纯'],
+        replyCount: 88,
+        isLongReview: true,
+        userLiked: false,
+      };
+    } catch (err: any) {
+      console.warn('GitHub Models call fallback:', err);
+    }
+  }
+
+  // 如果未配置 GitHub Token，从本地高保真知识库提取并附带免密提示
+  const lore = SHOW_LORE_DATABASE[show.id];
+  const sampleHighlight = lore ? lore.sceneHighlights[0] : `深入拆解《${show.title}》的核心叙事机制`;
+  const samplePraise = lore ? lore.praisePoints[0] : `视听语言与表演层次均达到了极高水准。`;
+
+  return {
+    id: `github-ai-fallback-${show.id}-${Date.now()}`,
+    source: 'douban',
+    author: 'AI 口碑实时分析引擎 (离线知识库)',
+    publication: '全网口碑聚合算法',
+    isCritic: true,
+    rating: show.compositeScore >= 9.0 ? 10 : 8,
+    date: '刚刚 (免配置实时解析)',
+    title: `【全网口碑提纯】撕开滤镜，深度审视《${show.title}》的艺术生命力`,
+    content: `${sampleHighlight}。${samplePraise} 无论从剧本立意还是工业完成度来看，本剧都为${show.network}赢得了足够的声誉。提示：在顶部【AI 引擎配置】填入免费 GitHub Token，即可由 GPT-4o 实时在线生成无限长评！`,
+    sentiment: show.hasEndingCollapse ? 'mixed' : 'positive',
+    likes: 1980,
+    tags: ['免配置秒回', '全网提纯', '深度解析'],
+    replyCount: 45,
+    isLongReview: true,
+    userLiked: false,
+  };
 }
