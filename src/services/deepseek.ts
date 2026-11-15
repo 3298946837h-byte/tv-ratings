@@ -67,7 +67,7 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
     throw new Error('未配置 DeepSeek API Key');
   }
 
-  const prompt = `请深度分析美剧《${showName}》，并严格以纯 JSON 格式输出以下结构（禁止输出任何 markdown 代码块外部的文字或说明，直接输出合法的可 JSON.parse 的 JSON 字符串）：
+  const prompt = `请深度分析美剧《${showName}》，精准检索其在 IMDb、烂番茄 (Rotten Tomatoes)、Metacritic、豆瓣电影、TMDb 上的真实评分、评价及代表性短评，并严格以纯 JSON 格式输出以下结构（禁止输出任何 markdown 代码块外部的文字或说明，直接输出合法的可 JSON.parse 的 JSON 字符串）：
 {
   "title": "中文剧名",
   "originalTitle": "英文原名",
@@ -78,7 +78,7 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
   "genres": ["类型1", "类型2", "类型3"],
   "network": "播出流媒体如 HBO / Max, Netflix, Apple TV+, Amazon Prime, Disney+, FX 等",
   "summary": "100字左右的高质量剧情梗概",
-  "compositeScore": 综合评分(0.0-10.0浮点数),
+  "compositeScore": 综合天平指数(0.0-10.0浮点数，计算公式：IMDb*35% + 烂番茄%*25% + 豆瓣*25% + Metacritic%*15%),
   "verdictTier": "masterpiece(封神9.0+) 或 must_watch(必看8.5-8.9) 或 recommended(推荐8.0-8.4) 或 mediocre(平庸7.0-7.9) 或 trap_warning(避雷<7.0) 或 collapse_warning(烂尾)",
   "tagline": "一句话神总结定调",
   "hasEndingCollapse": 是否烂尾断崖布尔值,
@@ -104,7 +104,42 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
     "cons": ["劝退毒点1", "劝退毒点2"],
     "audienceFit": "极力推荐适合人群",
     "avoidFit": "建议避开人群"
-  }
+  },
+  "seasons": [
+    {
+      "seasonNumber": 1,
+      "episodesCount": 10,
+      "averageScore": 8.8,
+      "trend": "up",
+      "episodes": [
+        { "season": 1, "episode": 1, "title": "Pilot", "score": 8.6, "votes": 25000 },
+        { "season": 1, "episode": 10, "title": "Season Finale", "score": 9.2, "votes": 35000, "isMilestone": true }
+      ]
+    }
+  ],
+  "comments": [
+    {
+      "id": "c_db_1",
+      "source": "douban",
+      "author": "豆瓣资深剧迷",
+      "rating": 9,
+      "date": "2024-03-15",
+      "content": "精选豆瓣高赞短评内容",
+      "sentiment": "positive",
+      "likes": 3200
+    },
+    {
+      "id": "c_rt_1",
+      "source": "rotten_tomatoes",
+      "author": "Top Critic",
+      "publication": "Variety",
+      "isCritic": true,
+      "date": "2024-03-16",
+      "content": "Authentic critic quote in English or translation",
+      "sentiment": "positive",
+      "likes": 1800
+    }
+  ]
 }`;
 
   const response = await fetch(`${BASE_URL}/chat/completions`, {
@@ -122,10 +157,23 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
   });
 
   if (!response.ok) {
-    throw new Error(`DeepSeek API 请求失败: ${response.status}`);
+    const errorText = await response.text();
+    throw new Error(`DeepSeek API 请求失败 (${response.status}): ${errorText}`);
   }
 
   const data = await response.json();
   const text = data.choices?.[0]?.message?.content || '{}';
-  return JSON.parse(text);
+  
+  // Clean markdown if present
+  let cleanText = text.trim();
+  if (cleanText.startsWith('```json')) {
+    cleanText = cleanText.substring(7);
+  } else if (cleanText.startsWith('```')) {
+    cleanText = cleanText.substring(3);
+  }
+  if (cleanText.endsWith('```')) {
+    cleanText = cleanText.substring(0, cleanText.length - 3);
+  }
+
+  return JSON.parse(cleanText.trim());
 }
