@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Film,
   Search,
@@ -40,6 +40,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [isDesktopDropdownOpen, setIsDesktopDropdownOpen] = useState(false);
   const [isMobileDropdownOpen, setIsMobileDropdownOpen] = useState(false);
+  const desktopInputRef = useRef<HTMLInputElement>(null);
+  const mobileInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-lg border-b border-slate-800">
@@ -68,10 +70,27 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Desktop Search Bar */}
         <div className="flex-1 max-w-md hidden md:block">
-          <div className="relative">
+          <form
+            action=""
+            onSubmit={(e) => {
+              e.preventDefault();
+              const q = searchQuery.trim();
+              if (q) {
+                desktopInputRef.current?.blur();
+                setIsDesktopDropdownOpen(false);
+                onTriggerSearch?.(q);
+              }
+            }}
+            className="relative"
+          >
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
-              type="text"
+              ref={desktopInputRef}
+              type="search"
+              enterKeyHint="search"
+              autoCapitalize="off"
+              autoCorrect="off"
+              autoComplete="off"
               value={searchQuery}
               onFocus={() => setIsDesktopDropdownOpen(true)}
               onChange={(e) => {
@@ -79,9 +98,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                 setIsDesktopDropdownOpen(true);
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && searchQuery.trim()) {
-                  setIsDesktopDropdownOpen(false);
-                  onTriggerSearch?.(searchQuery.trim());
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const q = searchQuery.trim();
+                  if (q) {
+                    desktopInputRef.current?.blur();
+                    setIsDesktopDropdownOpen(false);
+                    onTriggerSearch?.(q);
+                  }
                 }
               }}
               placeholder="搜索全球美剧/电影（中英文、演员、IMDb ID）..."
@@ -89,9 +113,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             />
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => {
                   onSearchChange('');
                   setIsDesktopDropdownOpen(false);
+                  desktopInputRef.current?.focus();
                 }}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs cursor-pointer"
               >
@@ -105,15 +131,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               isOpen={isDesktopDropdownOpen && searchQuery.trim().length > 0}
               onClose={() => setIsDesktopDropdownOpen(false)}
               onSelect={(item) => {
+                desktopInputRef.current?.blur();
                 setIsDesktopDropdownOpen(false);
                 onSelectMediaItem?.(item);
               }}
               onSearchAll={(q) => {
+                desktopInputRef.current?.blur();
                 setIsDesktopDropdownOpen(false);
                 onTriggerSearch?.(q);
               }}
             />
-          </div>
+          </form>
         </div>
 
         {/* Right Actions */}
@@ -182,54 +210,92 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* Mobile Search Bar (Cleaner, touch-optimized) */}
+      {/* Mobile Search Bar (Touch-optimized with explicit submit button & search form) */}
       <div className="px-3 pb-2.5 md:hidden">
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onFocus={() => setIsMobileDropdownOpen(true)}
-            onChange={(e) => {
-              onSearchChange(e.target.value);
-              setIsMobileDropdownOpen(true);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && searchQuery.trim()) {
-                setIsMobileDropdownOpen(false);
-                onTriggerSearch?.(searchQuery.trim());
-              }
-            }}
-            placeholder="搜索全球美剧/电影（中英文、演员、IMDb ID）..."
-            className="w-full bg-slate-900 border border-slate-800 focus:border-sky-500 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none transition-colors shadow-inner"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => {
-                onSearchChange('');
-                setIsMobileDropdownOpen(false);
-              }}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-xs"
-            >
-              ✕
-            </button>
-          )}
-
-          {/* Mobile Live Autocomplete Dropdown */}
-          <MediaAutocompleteDropdown
-            query={searchQuery}
-            isOpen={isMobileDropdownOpen && searchQuery.trim().length > 0}
-            onClose={() => setIsMobileDropdownOpen(false)}
-            onSelect={(item) => {
-              setIsMobileDropdownOpen(false);
-              onSelectMediaItem?.(item);
-            }}
-            onSearchAll={(q) => {
+        <form
+          action=""
+          onSubmit={(e) => {
+            e.preventDefault();
+            const q = searchQuery.trim();
+            if (q) {
+              mobileInputRef.current?.blur();
               setIsMobileDropdownOpen(false);
               onTriggerSearch?.(q);
-            }}
-          />
-        </div>
+            }
+          }}
+          className="flex items-center gap-2"
+        >
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              ref={mobileInputRef}
+              type="search"
+              enterKeyHint="search"
+              autoCapitalize="off"
+              autoCorrect="off"
+              autoComplete="off"
+              value={searchQuery}
+              onFocus={() => setIsMobileDropdownOpen(true)}
+              onChange={(e) => {
+                onSearchChange(e.target.value);
+                setIsMobileDropdownOpen(true);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const q = searchQuery.trim();
+                  if (q) {
+                    mobileInputRef.current?.blur();
+                    setIsMobileDropdownOpen(false);
+                    onTriggerSearch?.(q);
+                  }
+                }
+              }}
+              placeholder="输入片名（如 肖申克的救赎、毒师）..."
+              className="w-full bg-slate-900 border border-slate-700/80 focus:border-sky-500 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none transition-colors shadow-inner"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSearchChange('');
+                  setIsMobileDropdownOpen(false);
+                  mobileInputRef.current?.focus();
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            )}
+
+            {/* Mobile Live Autocomplete Dropdown */}
+            <MediaAutocompleteDropdown
+              query={searchQuery}
+              isOpen={isMobileDropdownOpen && searchQuery.trim().length > 0}
+              onClose={() => setIsMobileDropdownOpen(false)}
+              onSelect={(item) => {
+                mobileInputRef.current?.blur();
+                setIsMobileDropdownOpen(false);
+                onSelectMediaItem?.(item);
+              }}
+              onSearchAll={(q) => {
+                mobileInputRef.current?.blur();
+                setIsMobileDropdownOpen(false);
+                onTriggerSearch?.(q);
+              }}
+            />
+          </div>
+
+          {/* High-visibility touch submit button for mobile */}
+          <button
+            type="submit"
+            className="px-3.5 py-2 bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-400 hover:to-indigo-400 active:scale-95 text-slate-950 font-black text-xs rounded-xl flex items-center gap-1 shadow-md shadow-sky-500/25 flex-shrink-0 cursor-pointer transition-all"
+            title="开始全网检索"
+          >
+            <Search className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>搜索</span>
+          </button>
+        </form>
       </div>
     </header>
   );

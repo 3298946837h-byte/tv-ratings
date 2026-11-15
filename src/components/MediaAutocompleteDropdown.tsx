@@ -23,15 +23,19 @@ export const MediaAutocompleteDropdown: React.FC<MediaAutocompleteDropdownProps>
   const containerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Outside click listener
+  // Outside click / touch listener
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
   }, [onClose]);
 
   // Debounced search
@@ -122,18 +126,26 @@ export const MediaAutocompleteDropdown: React.FC<MediaAutocompleteDropdownProps>
 
       {/* 结果列表 */}
       {results.length > 0 ? (
-        <div className="max-h-80 overflow-y-auto divide-y divide-slate-800/50">
+        <div className="max-h-[55vh] sm:max-h-80 overflow-y-auto divide-y divide-slate-800/50 overscroll-contain">
           {results.map((item, idx) => {
             const isMovie = item.mediaType === 'movie';
             const isActive = activeIndex === idx;
 
+            const handleItemSelect = (e: React.SyntheticEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onSelect(item);
+            };
+
             return (
               <div
                 key={`${item.mediaType}-${item.id}`}
-                onClick={() => onSelect(item)}
+                onClick={handleItemSelect}
+                onMouseDown={handleItemSelect}
+                onTouchEnd={handleItemSelect}
                 onMouseEnter={() => setActiveIndex(idx)}
-                className={`p-3 flex items-center gap-3 cursor-pointer transition-colors ${
-                  isActive ? 'bg-sky-500/15 text-white' : 'hover:bg-slate-800/60 text-slate-200'
+                className={`p-3 flex items-center gap-3 cursor-pointer select-none transition-colors ${
+                  isActive ? 'bg-sky-500/15 text-white' : 'hover:bg-slate-800/60 active:bg-slate-800/90 text-slate-200'
                 }`}
               >
                 {/* 海报缩略图 */}
@@ -182,8 +194,8 @@ export const MediaAutocompleteDropdown: React.FC<MediaAutocompleteDropdownProps>
                 </div>
 
                 {/* 快捷点击箭头 */}
-                <span className="text-slate-600 text-xs hidden sm:inline pr-1">
-                  查看详情 →
+                <span className="text-sky-400 text-xs pr-1 font-semibold flex items-center gap-1">
+                  查看
                 </span>
               </div>
             );
@@ -192,19 +204,38 @@ export const MediaAutocompleteDropdown: React.FC<MediaAutocompleteDropdownProps>
       ) : (
         !isLoading && query.trim() && (
           <div className="p-4 text-center text-xs text-slate-400">
-            <span>未找到即时匹配，回车可在全网官方影视库中深度检索《{query}》</span>
+            <span>未找到即时匹配，点击下方按钮可在全网官方影视库中深度检索《{query}》</span>
           </div>
         )
       )}
 
-      {/* 底部直接回车触发全网搜索栏 */}
+      {/* 底部直接触发全网搜索栏 */}
       {query.trim() && (
         <div
-          onClick={() => onSearchAll(query)}
-          className="p-2.5 bg-slate-950 hover:bg-slate-900 flex items-center justify-between text-xs text-sky-400 font-bold cursor-pointer transition-colors"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onSearchAll(query);
+          }}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onSearchAll(query);
+          }}
+          onTouchEnd={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onSearchAll(query);
+          }}
+          className="p-3 bg-slate-950 hover:bg-slate-900 active:bg-slate-800 flex items-center justify-between text-xs text-sky-400 font-bold cursor-pointer select-none transition-colors border-t border-slate-800"
         >
-          <span>🚀 全网深度并发检索《{query}》...</span>
-          <span className="text-[10px] text-slate-500 bg-slate-800 px-2 py-0.5 rounded">Enter 键直达</span>
+          <span className="flex items-center gap-1.5">
+            <Sparkles className="w-4 h-4 text-sky-400" />
+            全网深度并发检索《{query}》...
+          </span>
+          <span className="text-[11px] text-slate-200 bg-sky-600/30 border border-sky-500/40 px-2 py-0.5 rounded-lg">
+            立即直达
+          </span>
         </div>
       )}
     </div>

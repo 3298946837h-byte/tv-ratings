@@ -622,9 +622,9 @@ export function App() {
 
       {/* Realtime Stream Toast Notification */}
       {streamToast && (
-        <div className="fixed top-20 right-4 sm:right-6 z-50 bg-slate-900/95 border border-emerald-500/80 text-emerald-300 px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-bold backdrop-blur-md animate-fadeIn">
+        <div className="fixed top-28 sm:top-20 left-4 right-4 sm:left-auto sm:right-6 max-w-md mx-auto z-50 bg-slate-900/95 border border-emerald-500/80 text-emerald-300 px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-bold backdrop-blur-md animate-fadeIn">
           <Sparkles className="w-4 h-4 text-emerald-400 flex-shrink-0 animate-spin" />
-          <span>{streamToast}</span>
+          <span className="flex-1">{streamToast}</span>
         </div>
       )}
 
@@ -862,11 +862,11 @@ export function App() {
               </p>
             </div>
 
-            <div className="pt-2 flex justify-center gap-3">
+            <div className="pt-2 flex flex-col sm:flex-row justify-center gap-3 w-full max-w-md mx-auto">
               <button
                 onClick={() => handleSearchWebRealtime(filters.searchQuery)}
                 disabled={isSearchingWeb}
-                className="text-xs sm:text-sm px-6 py-2.5 bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-slate-950 font-black rounded-xl transition-all shadow-lg shadow-sky-500/25 flex items-center gap-2 cursor-pointer"
+                className="w-full sm:w-auto text-xs sm:text-sm px-6 py-3 bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-400 hover:to-indigo-400 active:scale-95 text-slate-950 font-black rounded-xl transition-all shadow-lg shadow-sky-500/25 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Zap className="w-4 h-4" />
                 <span>立即全网实时检索《{filters.searchQuery}》</span>
@@ -883,7 +883,7 @@ export function App() {
                     specialTag: 'all',
                   })
                 }
-                className="text-xs px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition-colors cursor-pointer"
+                className="w-full sm:w-auto text-xs px-4 py-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 font-bold rounded-xl transition-colors cursor-pointer text-center"
               >
                 清空筛选
               </button>
