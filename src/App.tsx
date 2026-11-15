@@ -10,6 +10,7 @@ import { CompareModal } from './components/CompareModal';
 import { ScheduleModal } from './components/ScheduleModal';
 import { DeepSeekAdvisorModal } from './components/DeepSeekAdvisorModal';
 import { AddShowWithAIModal } from './components/AddShowWithAIModal';
+import { ShareModal } from './components/ShareModal';
 import { analyzeShowWithDeepSeek } from './services/deepseek';
 import {
   Scale,
@@ -87,6 +88,7 @@ export function App() {
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isAdvisorOpen, setIsAdvisorOpen] = useState(false);
   const [isAddShowOpen, setIsAddShowOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   // Real-time web searching state
   const [isSearchingWeb, setIsSearchingWeb] = useState(false);
@@ -513,6 +515,7 @@ export function App() {
         onOpenSchedule={() => setIsScheduleModalOpen(true)}
         onOpenAdvisor={() => setIsAdvisorOpen(true)}
         onOpenAddShow={() => setIsAddShowOpen(true)}
+        onOpenShare={() => setIsShareModalOpen(true)}
         activeTag={filters.specialTag}
         onSelectTag={(tag) => setFilters({ ...filters, specialTag: tag })}
       />
@@ -856,6 +859,13 @@ export function App() {
         onShowAdded={handleAddShow}
       />
 
+      {/* Share & API Protection Modal */}
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        lanIp="10.3.207.107"
+      />
+
       {/* Footer */}
       <footer className="mt-16 border-t border-slate-800/80 bg-slate-950/80 py-10 text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -873,6 +883,13 @@ export function App() {
           </div>
 
           <div className="flex items-center gap-4 text-xs">
+            <button
+              onClick={() => setIsShareModalOpen(true)}
+              className="text-emerald-400 hover:text-emerald-300 font-bold transition-colors cursor-pointer"
+            >
+              分享网站给他人
+            </button>
+            <span>•</span>
             <button
               onClick={() => setIsScheduleModalOpen(true)}
               className="hover:text-slate-300 transition-colors cursor-pointer"

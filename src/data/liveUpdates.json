@@ -1,19 +1,19 @@
 {
   "stats": {
     "startedAt": "2026-11-15T05:12:56.015Z",
-    "totalSyncs": 7,
-    "lastSyncAt": "2026-11-15T05:15:56.114Z",
-    "activeTarget": "绅士作风 The Gentlemen",
+    "totalSyncs": 8,
+    "lastSyncAt": "2026-11-15T05:16:26.118Z",
+    "activeTarget": "雷普利 Ripley",
     "status": "running"
   },
   "latestUpdate": {
-    "title": "绅士作风 The Gentlemen",
-    "imdb": 8.4,
-    "rottenTomatoes": 89,
-    "metacritic": 76,
-    "douban": 8.6,
-    "compositeScore": 8.4,
-    "latestBuzz": "盖·里奇式黑帮喜剧风格获赞，节奏明快、卡司亮眼，但部分评论认为剧情套路化。",
-    "updatedAt": "2026/11/15 13:15:56"
+    "title": "雷普利 Ripley",
+    "imdb": 8.1,
+    "rottenTomatoes": 85,
+    "metacritic": 75,
+    "douban": 8.7,
+    "compositeScore": 8.2,
+    "latestBuzz": "黑白摄影与安德鲁·斯科特的冷峻表演获赞，但慢节奏叙事评价两极。",
+    "updatedAt": "2025/06/13 00:00:00"
   }
 }

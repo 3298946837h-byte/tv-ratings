@@ -1,8 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  chatWithDeepSeek,
+  chatWithAI,
   getDeepSeekApiKey,
   setDeepSeekApiKey,
+  getGitHubToken,
+  setGitHubToken,
+  getAIProvider,
+  setAIProvider,
+  getGitHubModel,
+  setGitHubModel,
+  AIProvider,
   DeepSeekMessage,
 } from '../services/deepseek';
 import {
@@ -15,6 +22,9 @@ import {
   AlertTriangle,
   RotateCcw,
   Check,
+  Cpu,
+  Gift,
+  HelpCircle,
 } from 'lucide-react';
 
 interface DeepSeekAdvisorModalProps {
@@ -38,13 +48,19 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
     {
       role: 'assistant',
       content:
-        '👋 你好！我是 **DeepSeek 权威美剧口碑与避雷分析专家**。\n\n我已全面接入各大主流评分平台（**IMDb、烂番茄 Rotten Tomatoes、Metacritic、豆瓣电影、TMDb**）的数据与影评人共识。无论是找神作、避大坑、分析单集口碑走势还是探讨中西审美分歧，都可以随时问我！',
+        '👋 你好！我是 **美剧权威口碑与避雷 AI 专家**。\n\n已支持 **GitHub Models（免费配额）+ DeepSeek-V3 双引擎驱动**！\n我已全面接入各大主流评分平台（**IMDb、烂番茄 Rotten Tomatoes、Metacritic、豆瓣电影、TMDb**）的数据与影评人共识。无论是找神作、避大坑、排查烂尾断崖还是探讨中外审美分歧，都可以随时问我！',
     },
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [activeEngineTag, setActiveEngineTag] = useState<string>('双引擎就绪');
+
+  // AI Configuration State
   const [showKeyConfig, setShowKeyConfig] = useState(false);
-  const [customKey, setCustomKey] = useState(getDeepSeekApiKey());
+  const [provider, setProviderState] = useState<AIProvider>(getAIProvider());
+  const [customDeepSeekKey, setCustomDeepSeekKey] = useState(getDeepSeekApiKey());
+  const [customGitHubToken, setCustomGitHubToken] = useState(getGitHubToken());
+  const [githubModel, setGitHubModelState] = useState(getGitHubModel());
   const [keySaved, setKeySaved] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -64,14 +80,15 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
     setIsLoading(true);
 
     try {
-      const reply = await chatWithDeepSeek(newMsgs);
-      setMessages([...newMsgs, { role: 'assistant', content: reply }]);
+      const res = await chatWithAI(newMsgs);
+      setActiveEngineTag(res.engineUsed);
+      setMessages([...newMsgs, { role: 'assistant', content: res.reply }]);
     } catch (err: any) {
       setMessages([
         ...newMsgs,
         {
           role: 'assistant',
-          content: `❌ 请求出错: ${err.message || '请检查网络或 API Key'}`,
+          content: `❌ 请求出错: ${err.message || '请检查网络或 API Key / GitHub Token'}`,
         },
       ]);
     } finally {
@@ -79,8 +96,11 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
     }
   };
 
-  const handleSaveKey = () => {
-    setDeepSeekApiKey(customKey.trim());
+  const handleSaveConfig = () => {
+    setAIProvider(provider);
+    setDeepSeekApiKey(customDeepSeekKey.trim());
+    setGitHubToken(customGitHubToken.trim());
+    setGitHubModel(githubModel);
     setKeySaved(true);
     setTimeout(() => {
       setKeySaved(false);
@@ -98,15 +118,19 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
               <Bot className="w-5 h-5 text-white" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-black text-white">DeepSeek 权威剧荒与避雷顾问</h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base font-black text-white">美剧口碑顾问 (双引擎)</h2>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  DeepSeek-Chat 在线
+                  {activeEngineTag}
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold flex items-center gap-1">
+                  <Gift className="w-3 h-3 text-amber-400" />
+                  支持 GitHub Models 免费配额
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                各大平台评分对齐 · 烂尾断崖排查 · 中外口碑解构
+                GitHub 免费大模型 + DeepSeek 官方 · IMDb/烂番茄/豆瓣评分对齐 · 烂尾断崖排查
               </p>
             </div>
           </div>
@@ -115,10 +139,10 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
             <button
               onClick={() => setShowKeyConfig(!showKeyConfig)}
               className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
-              title="配置 API Key"
+              title="配置 AI 引擎与 Key"
             >
-              <Key className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">API 设置</span>
+              <Cpu className="w-3.5 h-3.5 text-sky-400" />
+              <span className="hidden sm:inline">AI 引擎配置</span>
             </button>
             <button
               onClick={onClose}
@@ -129,27 +153,123 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
           </div>
         </div>
 
-        {/* API Key Config Dropdown */}
+        {/* AI Key & Dual Engine Config Dropdown */}
         {showKeyConfig && (
-          <div className="p-4 bg-slate-950 border-b border-slate-800 space-y-2 animate-fadeIn">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-slate-200">DeepSeek API Key 设置</span>
-              <span className="text-[11px] text-emerald-400">已默认预装您的 API Key</span>
+          <div className="p-4 bg-slate-950 border-b border-slate-800 space-y-4 animate-fadeIn text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                <Cpu className="w-4 h-4 text-sky-400" />
+                AI 模型引擎与免费配额管理
+              </span>
+              <span className="text-[11px] text-emerald-400">设置将保存在当前浏览器</span>
             </div>
-            <div className="flex gap-2">
+
+            {/* Provider Switcher */}
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setProviderState('auto')}
+                className={`py-2 px-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                  provider === 'auto'
+                    ? 'bg-sky-500/20 border-sky-400 text-sky-200 font-bold'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <div className="font-bold">智能双引擎 (推荐)</div>
+                <div className="text-[10px] text-slate-400 scale-95">优先 GitHub 免费，备用 DeepSeek</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setProviderState('github_models')}
+                className={`py-2 px-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                  provider === 'github_models'
+                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200 font-bold'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <div className="font-bold">GitHub Models</div>
+                <div className="text-[10px] text-emerald-400 scale-95">100% 免费配额 (0 成本)</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setProviderState('deepseek')}
+                className={`py-2 px-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                  provider === 'deepseek'
+                    ? 'bg-indigo-500/20 border-indigo-400 text-indigo-200 font-bold'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <div className="font-bold">DeepSeek-V3</div>
+                <div className="text-[10px] text-slate-400 scale-95">官方极速智能模型</div>
+              </button>
+            </div>
+
+            {/* GitHub Token Config */}
+            <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                  <Gift className="w-3.5 h-3.5 text-emerald-400" />
+                  GitHub Token (用于调用 GitHub Models 免费额度)
+                </span>
+                <span className="text-[10px] text-emerald-400">免费领取 · 每天百次额度</span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={customGitHubToken}
+                  onChange={(e) => setCustomGitHubToken(e.target.value)}
+                  placeholder="ghp_... (GitHub Personal Access Token)"
+                  className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-sky-500"
+                />
+                <select
+                  value={githubModel}
+                  onChange={(e) => setGitHubModelState(e.target.value)}
+                  className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none"
+                >
+                  <option value="gpt-4o-mini">GPT-4o mini (推荐/最快)</option>
+                  <option value="Meta-Llama-3.1-70B-Instruct">Llama 3.1 70B</option>
+                  <option value="Mistral-large-2407">Mistral Large</option>
+                </select>
+              </div>
+              <p className="text-[10px] text-slate-400">
+                💡 <strong>异地朋友使用提示</strong>：任何拥有 GitHub 账号的人，仅需在{' '}
+                <a
+                  href="https://github.com/settings/tokens"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sky-400 underline"
+                >
+                  github.com/settings/tokens
+                </a>{' '}
+                生成一个免费 Token，即可享受完全免费的顶级大模型服务，不消耗站长任何资金！
+              </p>
+            </div>
+
+            {/* DeepSeek API Key Config */}
+            <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-200">DeepSeek API Key</span>
+                <span className="text-[10px] text-slate-400">已默认预装站长专属 Key</span>
+              </div>
               <input
                 type="password"
-                value={customKey}
-                onChange={(e) => setCustomKey(e.target.value)}
+                value={customDeepSeekKey}
+                onChange={(e) => setCustomDeepSeekKey(e.target.value)}
                 placeholder="sk-..."
-                className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-sky-500"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-sky-500"
               />
+            </div>
+
+            <div className="flex justify-end">
               <button
-                onClick={handleSaveKey}
-                className="px-4 py-1.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                type="button"
+                onClick={handleSaveConfig}
+                className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-md shadow-sky-500/20 cursor-pointer"
               >
                 {keySaved ? <Check className="w-3.5 h-3.5 text-black" /> : null}
-                {keySaved ? '已保存' : '保存'}
+                <span>{keySaved ? '设置已保存' : '保存双引擎配置'}</span>
               </button>
             </div>
           </div>
@@ -160,19 +280,21 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
           {messages.map((m, idx) => (
             <div
               key={idx}
-              className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              className={`flex gap-3 ${
+                m.role === 'user' ? 'justify-end' : 'justify-start'
+              }`}
             >
-              {m.role === 'assistant' && (
-                <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md shadow-sky-600/30">
+              {m.role !== 'user' && (
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow-md shadow-sky-500/20">
                   <Bot className="w-4 h-4 text-white" />
                 </div>
               )}
 
               <div
-                className={`max-w-[85%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap ${
+                className={`max-w-[85%] rounded-2xl p-3.5 text-xs leading-relaxed ${
                   m.role === 'user'
-                    ? 'bg-sky-500 text-slate-950 font-medium'
-                    : 'bg-slate-950/80 border border-slate-800 text-slate-200 shadow-md'
+                    ? 'bg-gradient-to-r from-sky-600 to-indigo-600 text-white rounded-tr-none shadow-md shadow-sky-600/20'
+                    : 'bg-slate-950 border border-slate-800 text-slate-200 rounded-tl-none space-y-2 whitespace-pre-wrap'
                 }`}
               >
                 {m.content}
@@ -180,15 +302,14 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
             </div>
           ))}
 
-          {/* Loading bubble */}
           {isLoading && (
-            <div className="flex gap-3 justify-start items-center">
-              <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center flex-shrink-0 animate-pulse">
+            <div className="flex gap-3 items-center">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center flex-shrink-0 animate-pulse">
                 <Bot className="w-4 h-4 text-white" />
               </div>
-              <div className="bg-slate-950/80 border border-slate-800 rounded-2xl px-4 py-3 text-xs text-sky-400 flex items-center gap-2">
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl rounded-tl-none p-3.5 text-xs text-sky-400 flex items-center gap-2">
                 <Sparkles className="w-3.5 h-3.5 animate-spin" />
-                <span>DeepSeek 正在综合全网权威平台评分与影评人长评进行深度分析...</span>
+                <span>AI 双引擎分析全网评分、烂尾走势与影评人共识中...</span>
               </div>
             </div>
           )}
@@ -196,25 +317,21 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Quick Prompts */}
-        <div className="px-4 py-2 border-t border-slate-800/80 bg-slate-950/40 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-          <span className="text-[11px] text-slate-400 flex items-center gap-1 flex-shrink-0 font-medium mr-1">
-            <Flame className="w-3 h-3 text-amber-400" />
-            快速提问:
-          </span>
-          {PRESET_QUESTIONS.map((q, idx) => (
+        {/* Preset Prompt Suggestions */}
+        <div className="p-2 sm:px-4 border-t border-slate-800 bg-slate-950/60 overflow-x-auto scrollbar-none flex items-center gap-2">
+          {PRESET_QUESTIONS.map((q, i) => (
             <button
-              key={idx}
+              key={i}
               onClick={() => handleSend(q)}
               disabled={isLoading}
-              className="text-[11px] px-2.5 py-1 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-slate-300 whitespace-nowrap transition-colors cursor-pointer flex-shrink-0 hover:text-white"
+              className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-colors whitespace-nowrap cursor-pointer flex-shrink-0"
             >
               {q}
             </button>
           ))}
         </div>
 
-        {/* Input Bar */}
+        {/* Bottom Input Box */}
         <div className="p-3 sm:p-4 border-t border-slate-800 bg-slate-950">
           <form
             onSubmit={(e) => {
@@ -227,19 +344,17 @@ export const DeepSeekAdvisorModal: React.FC<DeepSeekAdvisorModalProps> = ({
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="输入任何想查的美剧（如：'《流人》值得看吗？' 或 '2024最值得看的美剧是什么'）..."
-              className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition-colors"
+              placeholder="问问美剧：哪部烂尾了？《权游》第几季崩溃？某剧豆瓣和烂番茄差距为何很大？"
+              disabled={isLoading}
+              className="flex-1 bg-slate-900 border border-slate-700/80 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition-colors"
             />
             <button
               type="submit"
               disabled={!input.trim() || isLoading}
-              className={`p-2.5 rounded-xl font-bold transition-all flex items-center justify-center cursor-pointer ${
-                input.trim() && !isLoading
-                  ? 'bg-sky-500 hover:bg-sky-400 text-slate-950 shadow-md shadow-sky-500/20'
-                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-              }`}
+              className="px-4 py-2.5 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-sky-500/20 flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
             >
-              <Send className="w-4 h-4" />
+              <Send className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">发送</span>
             </button>
           </form>
         </div>

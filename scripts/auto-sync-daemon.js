@@ -9,7 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOG_FILE = path.join(__dirname, '..', 'sync-daemon.log');
 const LIVE_DATA_FILE = path.join(__dirname, '..', 'src', 'data', 'liveUpdates.json');
 
-const API_KEY = process.env.VITE_DEEPSEEK_API_KEY || 'sk-060eec10466b4570b47ed67fa1b78a3d';
+const API_KEY = process.env.VITE_DEEPSEEK_API_KEY || '';
 const BASE_URL = 'https://api.deepseek.com';
 
 const TARGET_SHOWS_STREAM = [
