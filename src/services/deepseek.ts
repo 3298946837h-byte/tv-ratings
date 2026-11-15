@@ -263,7 +263,9 @@ export async function chatWithDeepSeek(messages: DeepSeekMessage[]): Promise<str
 }
 
 export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
-  const normName = showName.trim().toLowerCase();
+  const cleanName = showName.trim().replace(/[《》]/g, '');
+  if (!cleanName) return null;
+  const normName = cleanName.toLowerCase();
   const cacheKey = `show_${normName}`;
 
   const cached = getCachedText(cacheKey);
@@ -273,6 +275,100 @@ export async function analyzeShowWithDeepSeek(showName: string): Promise<any> {
     } catch (e) {}
   }
 
-  // 0 消耗保护下不抛错，由上层公共 API (TVMaze) 与兜底建档器接管
+  // 1. 如果配置了 GitHub Token (0 费用免费模型)
+  const ghToken = getGitHubToken();
+  if (ghToken) {
+    try {
+      const prompt = `请分析影视作品《${cleanName}》，严格返回合法的 JSON 格式（不要有任何额外文字或 markdown 代码块）：
+{
+  "title": "${cleanName}",
+  "originalTitle": "官方原名或英文名",
+  "year": "上映年份（如 2026 或 2024）",
+  "totalSeasons": 1,
+  "totalEpisodes": 1,
+  "status": "Ended",
+  "genres": ["真实类型1", "真实类型2"],
+  "network": "真实出品公司或制作方（如电影写制作公司/发行方，电视剧写平台，绝不可胡编）",
+  "summary": "真实准确剧情梗概，写出真实导演、主演与真实背景，绝不可凭空捏造",
+  "compositeScore": 8.0,
+  "verdictTier": "must_watch",
+  "tagline": "一句话真实评价",
+  "hasEndingCollapse": false,
+  "hasCulturalDivergence": false,
+  "isTrap": false,
+  "badges": ["AI 权威收录"]
+}`;
+      const reply = await callGitHubModels([
+        { role: 'system', content: '你是专业严肃的全球影视资料专家，实事求是，绝不胡编乱造。如果作品不存在则如实说明。输出合法纯 JSON。' },
+        { role: 'user', content: prompt }
+      ], true);
+
+      let cleanJson = reply.trim();
+      if (cleanJson.startsWith('```json')) cleanJson = cleanJson.substring(7);
+      if (cleanJson.startsWith('```')) cleanJson = cleanJson.substring(3);
+      if (cleanJson.endsWith('```')) cleanJson = cleanJson.substring(0, cleanJson.length - 3);
+
+      const parsed = JSON.parse(cleanJson.trim());
+      setCachedText(cacheKey, JSON.stringify(parsed));
+      return parsed;
+    } catch (e) {
+      console.warn('GitHub Models analyze failed:', e);
+    }
+  }
+
+  // 2. 如果开启了 DeepSeek 并且配置了 API Key
+  if (!isDeepSeekPaused()) {
+    const apiKey = getDeepSeekApiKey();
+    if (apiKey) {
+      try {
+        const prompt = `请分析影视作品《${cleanName}》，严格返回合法的 JSON 格式（不要有任何额外文字）：
+{
+  "title": "${cleanName}",
+  "originalTitle": "官方原名或英文名",
+  "year": "上映年份",
+  "totalSeasons": 1,
+  "totalEpisodes": 1,
+  "status": "Ended",
+  "genres": ["真实类型1", "真实类型2"],
+  "network": "真实出品方或发行方（如电影写制片厂/出品公司，电视剧写播出平台，绝不可瞎编）",
+  "summary": "真实准确剧情梗概，写出真实导演与主演，绝不可胡编乱造",
+  "compositeScore": 8.0,
+  "verdictTier": "must_watch",
+  "tagline": "一句话真实定位",
+  "hasEndingCollapse": false,
+  "hasCulturalDivergence": false,
+  "isTrap": false,
+  "badges": ["DeepSeek 智能识别"]
+}`;
+        const response = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: 'deepseek-chat',
+            messages: [
+              { role: 'system', content: '你是严肃权威的全球影视资料专家，实事求是，绝不胡编乱造。输出合法纯 JSON。' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.1,
+            response_format: { type: 'json_object' }
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const content = data.choices?.[0]?.message?.content || '{}';
+          const parsed = JSON.parse(content);
+          setCachedText(cacheKey, JSON.stringify(parsed));
+          return parsed;
+        }
+      } catch (e) {
+        console.warn('DeepSeek analyze failed:', e);
+      }
+    }
+  }
+
   return null;
 }
