@@ -9,6 +9,7 @@ import {
   saveLocalUserReview,
   toggleLikeReview,
 } from '../services/reviewGenerator';
+import { fetchLiveHumanReviews } from '../services/realHumanReviews';
 import {
   X,
   Sparkles,
@@ -29,6 +30,8 @@ import {
   Filter,
   Check,
   ChevronDown,
+  Radio,
+  Globe2,
 } from 'lucide-react';
 
 interface ShowDetailModalProps {
@@ -47,6 +50,11 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
   // DeepSeek 诊断状态
   const [deepSeekAnalysis, setDeepSeekAnalysis] = useState<string | null>(null);
   const [isDiagnosing, setIsDiagnosing] = useState(false);
+
+  // 全网真人实时讨论流状态
+  const [liveReviews, setLiveReviews] = useState<ReviewComment[]>([]);
+  const [livePage, setLivePage] = useState<number>(0);
+  const [isLoadingLive, setIsLoadingLive] = useState<boolean>(false);
 
   // 无限影评流状态
   const [page, setPage] = useState<number>(1);
@@ -69,24 +77,83 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
   // 点赞计数器本地内存状态增量
   const [likesDelta, setLikesDelta] = useState<Record<string, { countDelta: number; liked: boolean }>>({});
 
+  // 监听剧集切换，实时抓取全球真人关于该剧的讨论
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoadingLive(true);
+    setLivePage(0);
+    setPage(1);
+
+    fetchLiveHumanReviews(show, 0)
+      .then((reviews) => {
+        if (isMounted && reviews.length > 0) {
+          setLiveReviews(reviews);
+        }
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingLive(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [show.id]);
+
   // 监听筛选器重置页码
   useEffect(() => {
     setPage(1);
-  }, [platformFilter, sentimentFilter, sortBy, show.id]);
+  }, [platformFilter, sentimentFilter, sortBy]);
 
-  // 获取当前分页的影评
+  // 获取融合了全球真人讨论与权威口碑库的分页影评
   const reviewData = useMemo(() => {
-    return getEndlessReviews(show, page, 10, platformFilter, sentimentFilter, sortBy);
-  }, [show, page, platformFilter, sentimentFilter, sortBy, publishSuccess]);
+    const base = getEndlessReviews(show, page, 10, platformFilter, sentimentFilter, sortBy);
 
-  // 处理加载更多
+    if (liveReviews.length > 0) {
+      let filteredLive = [...liveReviews];
+      if (platformFilter !== 'all' && platformFilter !== 'imdb') {
+        filteredLive = [];
+      }
+      if (sentimentFilter !== 'all') {
+        filteredLive = filteredLive.filter((r) => r.sentiment === sentimentFilter);
+      }
+
+      // 将真人讨论与权威库合并
+      const combined = [...filteredLive, ...base.reviews];
+      const seen = new Set<string>();
+      const deduplicated = combined.filter((item) => {
+        if (seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      });
+
+      return {
+        reviews: deduplicated.slice(0, page * 10),
+        totalEstimated: base.totalEstimated + liveReviews.length * 30,
+        hasMore: true,
+      };
+    }
+
+    return base;
+  }, [show, page, platformFilter, sentimentFilter, sortBy, publishSuccess, liveReviews]);
+
+  // 处理无限加载更多：同步拉取下一页全网真人讨论并递增页码
   const handleLoadMore = () => {
-    if (isLoadingMore || !reviewData.hasMore) return;
+    if (isLoadingMore) return;
     setIsLoadingMore(true);
-    setTimeout(() => {
-      setPage((prev) => prev + 1);
-      setIsLoadingMore(false);
-    }, 280);
+    const nextPage = livePage + 1;
+    setLivePage(nextPage);
+
+    // 跨网拉取全球真人评论
+    fetchLiveHumanReviews(show, nextPage)
+      .then((moreLive) => {
+        if (moreLive.length > 0) {
+          setLiveReviews((prev) => [...prev, ...moreLive]);
+        }
+      })
+      .finally(() => {
+        setPage((prev) => prev + 1);
+        setIsLoadingMore(false);
+      });
   };
 
   // 处理点赞
@@ -391,6 +458,32 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
             {/* 无限影评流与多源真实评测中心 (Endless Reviews & Critics) */}
             {/* ======================================================== */}
             <div className="space-y-4 pt-6 border-t border-slate-800">
+              {/* LIVE 全网真人实时评论流状态条 */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-red-950/70 via-slate-950 to-indigo-950/60 border border-red-500/40 text-xs shadow-lg shadow-red-950/20">
+                <div className="flex items-center gap-2.5">
+                  <span className="relative flex h-3 w-3 flex-shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                  </span>
+                  <div>
+                    <span className="font-black text-red-400 flex items-center gap-1.5 text-xs sm:text-sm">
+                      <Radio className="w-4 h-4 animate-pulse text-red-400" />
+                      LIVE 全网真人实时讨论流已连接
+                    </span>
+                    <span className="text-[11px] text-slate-300 block">
+                      跨网实时监听全球公开讨论通道，零合成套话，100% 真实人类网民与原声探讨
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-center">
+                  <span className="px-2.5 py-1 rounded-full bg-red-500/20 border border-red-500/50 text-red-300 text-[11px] font-bold flex items-center gap-1">
+                    <Globe2 className="w-3.5 h-3.5 text-red-400" />
+                    {isLoadingLive ? '实时同步中...' : `已连线 ${liveReviews.length} 条真人探讨`}
+                  </span>
+                </div>
+              </div>
+
               {/* Header Statistics & Publish Action */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-950/80 p-4 rounded-2xl border border-slate-800">
                 <div>
@@ -404,6 +497,10 @@ export const ShowDetailModal: React.FC<ShowDetailModalProps> = ({
                     </span>
                   </div>
                   <div className="flex items-center gap-2 sm:gap-3 text-xs text-slate-400 flex-wrap">
+                    <span className="flex items-center gap-1 text-red-400 font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                      真人实时连线
+                    </span>
                     <span className="flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#00b51d]" />
                       豆瓣精选 4,500+
