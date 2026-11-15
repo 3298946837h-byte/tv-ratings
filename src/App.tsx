@@ -12,6 +12,7 @@ import { DeepSeekAdvisorModal } from './components/DeepSeekAdvisorModal';
 import { AddShowWithAIModal } from './components/AddShowWithAIModal';
 import { ShareModal } from './components/ShareModal';
 import { analyzeShowWithDeepSeek } from './services/deepseek';
+import { searchTVMazeShow } from './services/tvmaze';
 import {
   Scale,
   Sparkles,
@@ -158,6 +159,21 @@ export function App() {
     setSearchProgress(`正在从全网自动抓取最新美剧《${nextTitle}》的各大平台权威评分与评论...`);
 
     try {
+      // 1. 优先调用 100% 免费公共影视 API (TVMaze, 0 Token / 0 费用)
+      const tvMazeShow = await searchTVMazeShow(nextTitle);
+      if (tvMazeShow) {
+        setShows((prev) => {
+          const updated = [...prev, tvMazeShow];
+          try {
+            localStorage.setItem('ratevibe_cached_shows', JSON.stringify(updated));
+          } catch (e) {}
+          return updated;
+        });
+        setStreamToast(`✨ 已通过免费公共 API 实时抓取：《${tvMazeShow.title}》！`);
+        setTimeout(() => setStreamToast(null), 3500);
+        return;
+      }
+
       const generated = await analyzeShowWithDeepSeek(nextTitle);
       const newShow: TVShow = {
         id: `auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -347,6 +363,22 @@ export function App() {
     setSearchProgress(`正在并发调用各大平台（IMDb, 烂番茄, Metacritic, 豆瓣, TMDb）实时检索《${query}》...`);
 
     try {
+      // 1. 优先调用 100% 免费公共影视 API (TVMaze, 0 Token / 0 费用)
+      const tvMazeShow = await searchTVMazeShow(query);
+      if (tvMazeShow) {
+        setShows((prev) => {
+          const updated = [tvMazeShow, ...prev];
+          try {
+            localStorage.setItem('ratevibe_cached_shows', JSON.stringify(updated));
+          } catch (e) {}
+          return updated;
+        });
+        setSelectedShow(tvMazeShow);
+        setStreamToast(`✨ 已通过免费公共影视 API 实时收录：《${tvMazeShow.title}》！`);
+        setTimeout(() => setStreamToast(null), 4000);
+        return;
+      }
+
       const generated = await analyzeShowWithDeepSeek(query);
 
       const newShow: TVShow = {
